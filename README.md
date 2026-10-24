@@ -38,16 +38,22 @@ limiting destination×product rows. It never reports a success it cannot compute
 
 ### Screens
 
-The app opens on a **landing page** (`/`) that states the problem, shows one closed lane and its
-contingency lane in the network diagram, and puts the real computed numbers on the page. Every CTA
-routes into the console.
+The app opens on a **landing page** (`/`) with an **interactive network model**: switch between
+*baseline → lane closed → recovered* and the diagram, the counters and the note all change to the
+real computed figures. Every CTA routes into the console.
 
 | | |
 |---|---|
-| ![Operations dashboard](docs/screenshots/dashboard.png) | ![Baseline planner](docs/screenshots/planner.png) |
-| **Dashboard** — KPIs, capacity, recent scenario history | **Planner** — allocations, gaps, risk breakdown, solver status |
-| ![Recovery center](docs/screenshots/recovery.png) | ![Scenario comparison](docs/screenshots/compare.png) |
-| **Recovery** — activated lanes, per-shipment changes, residual | **Compare** — absolute values, deltas, deadline exposure |
+| ![Landing — baseline](docs/screenshots/landing.png) | ![Landing — lane closed](docs/screenshots/landing-disrupted.png) |
+| **Baseline** — all lanes open, 100.0% fulfilled | **Lane closed** — RT-03 out, 500 units unserved |
+| ![Landing — recovered](docs/screenshots/landing-recovered.png) | ![Operations dashboard](docs/screenshots/dashboard.png) |
+| **Recovered** — contingency RT-13 absorbs the gap | **Dashboard** — KPIs, capacity, scenario history |
+| ![Baseline planner](docs/screenshots/planner.png) | ![Scenario comparison](docs/screenshots/compare.png) |
+| **Planner** — allocations, gaps, risk breakdown | **Compare** — absolute values, deltas, deadline exposure |
+
+Motion on the landing page: scroll-reveal per section, count-up statistics, an animated closed lane,
+drifting aurora gradients, a marquee of modelled constraints, and cursor spotlights on cards. All of
+it respects `prefers-reduced-motion`.
 
 **Routes:** `/` landing · `/dashboard` · `/datasets` · `/planner` · `/disruption` · `/recovery` ·
 `/compare` · `/exports`
@@ -102,7 +108,7 @@ python -m pytest apps/api/tests -q          # 28 passed
 cd apps/web && npm run build
 
 # Browser E2E (needs both servers running)
-cd apps/web && npx playwright test          # 4 passed
+cd apps/web && npx playwright test          # 5 passed
 ```
 
 The suite asserts invariants, not just "it returned 200":

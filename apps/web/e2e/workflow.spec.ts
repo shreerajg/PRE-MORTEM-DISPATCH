@@ -69,17 +69,29 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
 });
 
 test.describe('Landing page', () => {
-  test('presents the product and routes into the console', async ({ page }) => {
+  test('interactive demo tells the disruption story with real numbers', async ({ page }) => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: /Know what breaks/i })).toBeVisible();
     await expect(page.getByText(/TRIWIZATHON 2026/i).first()).toBeVisible();
 
-    // The headline numbers shown on the landing page must match the real demo story
-    await expect(page.getByText('89.9%').first()).toBeVisible();
-    await expect(page.getByText(/\+\$3,410/).first()).toBeVisible();
+    // Baseline state
+    await expect(page.getByText('100.0%').first()).toBeVisible();
 
-    // No horizontal overflow at mobile width (checked separately below)
+    // Break the network on the landing page itself
+    await page.getByRole('button', { name: /lane closed/i }).click();
+    await expect(page.getByText('89.9%')).toBeVisible();
+    await expect(page.getByText('−500 units')).toBeVisible();
+    await expect(page.getByText('$22,620')).toBeVisible();
+
+    // Recover it
+    await page.getByRole('button', { name: /^recovered$/i }).click();
+    await expect(page.getByText('$26,030')).toBeVisible();
+    await expect(page.getByText(/Contingency lane RT-13/i)).toBeVisible();
+  });
+
+  test('routes into the console', async ({ page }) => {
+    await page.goto('/');
     await page.getByRole('link', { name: /run the workflow/i }).click();
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole('heading', { name: /Operations Dashboard/i })).toBeVisible();
