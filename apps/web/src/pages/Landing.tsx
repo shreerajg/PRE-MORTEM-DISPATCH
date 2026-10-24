@@ -7,6 +7,7 @@ import {
   Boxes,
   Calculator,
   CheckCircle2,
+  ChevronRight,
   Database,
   FileSpreadsheet,
   GitCompare,
@@ -19,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { health } from '../lib/api';
-import { Reveal, useCountUp, usePrefersReducedMotion, useSpotlight } from '../lib/motion';
+import { Reveal, useCountUp, useInView, usePrefersReducedMotion, useSpotlight } from '../lib/motion';
 
 /* ------------------------------------------------------------------ */
 /* Primitives                                                          */
@@ -385,13 +386,62 @@ const CAPABILITIES = [
 ];
 
 const WORKFLOW = [
-  { n: '01', title: 'Load', body: 'Bundled network or your own CSVs', icon: Boxes },
-  { n: '02', title: 'Plan', body: 'Baseline allocation, every unit accounted for', icon: Calculator },
-  { n: '03', title: 'Break', body: 'Inject a disruption into real inputs', icon: Zap },
-  { n: '04', title: 'Measure', body: 'Impact, risk and deadline exposure', icon: Activity },
-  { n: '05', title: 'Recover', body: 'Contingency capacity, constraint-checked', icon: HeartPulse },
-  { n: '06', title: 'Decide', body: 'Compare, explain, export', icon: FileSpreadsheet },
+  {
+    n: '01',
+    title: 'Load',
+    icon: Boxes,
+    body: 'Bundled network or your own six CSVs. Schema, types and references are checked before anything is planned.',
+    facts: ['4 warehouses', '8 destinations', '20 lanes'],
+    meter: { label: 'tables validated', display: '6 / 6', ratio: 1, tone: 'neutral' as const },
+  },
+  {
+    n: '02',
+    title: 'Plan',
+    icon: Calculator,
+    body: 'A constrained baseline allocation. Every unit is attributed to a lane, a warehouse and a destination.',
+    facts: ['27 shipments', '5 constraints', 'greedy · feasible'],
+    meter: { label: 'demand fulfilled', display: '100.0%', ratio: 1, tone: 'neutral' as const },
+  },
+  {
+    n: '03',
+    title: 'Break',
+    icon: Zap,
+    body: 'Inject a disruption. The engine rewrites the planning inputs and solves again — no charts are faked.',
+    facts: ['RT-03 closed', '1 of 20 lanes', '500 at risk'],
+    meter: { label: 'lanes available', display: '19 / 20', ratio: 19 / 20, tone: 'warn' as const },
+  },
+  {
+    n: '04',
+    title: 'Measure',
+    icon: Activity,
+    body: 'The gap between the two computed plans: unmet volume, cost delta, deadline exposure and risk.',
+    facts: ['−500 units', 'risk 23.8', '0 late'],
+    meter: { label: 'demand fulfilled', display: '89.9%', ratio: 0.899, tone: 'bad' as const },
+  },
+  {
+    n: '05',
+    title: 'Recover',
+    icon: HeartPulse,
+    body: 'Contingency lanes and priority ordering re-plan under the damage. Shortfall is bought back, never invented.',
+    facts: ['RT-13 · RT-16 · RT-19', '+$3,410', 'residual 0'],
+    meter: { label: 'demand recovered', display: '100.0%', ratio: 1, tone: 'good' as const },
+  },
+  {
+    n: '06',
+    title: 'Decide',
+    icon: FileSpreadsheet,
+    body: 'Three plans side by side with server-computed deltas, then a CSV export built from the stored data.',
+    facts: ['3 plans', '9 KPIs', 'CSV · 5.6 KB'],
+    meter: { label: 'export matches screen', display: 'exact', ratio: 1, tone: 'good' as const },
+  },
 ];
+
+const METER_TONE = {
+  neutral: { bar: 'bg-white/35', text: 'text-white/60' },
+  warn: { bar: 'bg-amber-400/80', text: 'text-amber-300' },
+  bad: { bar: 'bg-red-400', text: 'text-red-400' },
+  good: { bar: 'bg-emerald-400', text: 'text-emerald-400' },
+};
 
 const LIMITS = [
   'Greedy is feasible and priority-respecting — not proven optimal. Every plan states its solver and status.',
@@ -417,8 +467,23 @@ const MARQUEE = [
 
 /* ------------------------------------------------------------------ */
 
-function CapabilityCard({ item, index }: { item: (typeof CAPABILITIES)[number]; index: number }) {
-  const ref = useSpotlight<HTMLDivElement>();
+/** Stage meter that fills when it scrolls into view. */
+function Meter({ ratio, tone }: { ratio: number; tone: keyof typeof METER_TONE }) {
+  const { ref, inView } = useInView<HTMLDivElement>();
+  return (
+    <div ref={ref} className="mt-2 h-1 overflow-hidden rounded-full bg-white/[0.07]">
+      <div
+        className={`h-full rounded-full ${METER_TONE[tone].bar}`}
+        style={{
+          width: inView ? `${Math.round(ratio * 1000) / 10}%` : '0%',
+          transition: 'width 950ms cubic-bezier(0.16,1,0.3,1) 140ms',
+        }}
+      />
+    </div>
+  );
+}
+
+function CapabilityCard({ item, index }: { item: (typeof CAPABILITIES)[number]; index: number }) {  const ref = useSpotlight<HTMLDivElement>();
   const Icon = item.icon;
   return (
     <Reveal delay={index * 70}>
@@ -661,26 +726,68 @@ export default function Landing() {
       {/* ---------------- workflow ---------------- */}
       <section id="workflow" className="mx-auto max-w-6xl px-6 py-24">
         <Reveal>
-          <Mono className="text-white/35">workflow</Mono>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Six steps, one unbroken path</h2>
-          <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-white/45">
-            A judge can complete this without touching source code or a terminal. Each step persists its result, so the
-            next one never re-derives what came before.
-          </p>
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <Mono className="text-white/35">workflow</Mono>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Six steps, one unbroken path</h2>
+              <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-white/45">
+                A judge can complete this without touching source code or a terminal. Each step persists its result, so
+                the next one never re-derives what came before.
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+              <Mono className="text-white/30">shown below</Mono>
+              <p className="mt-1 max-w-[16rem] text-[12px] leading-relaxed text-white/45">
+                The real artefacts from the bundled run — not illustrative placeholders.
+              </p>
+            </div>
+          </div>
         </Reveal>
 
         <div className="relative mt-12">
-          <div className="pointer-events-none absolute left-0 right-0 top-[52px] hidden h-px bg-gradient-to-r from-transparent via-white/12 to-transparent lg:block" />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {WORKFLOW.map(({ n, title, body, icon: Icon }, i) => (
-              <Reveal key={n} delay={i * 60}>
-                <div className="group relative h-full rounded-xl border border-white/[0.07] bg-[#0b0c0f] p-5 transition-all duration-300 hover:-translate-y-1 hover:border-white/20">
+            {WORKFLOW.map(({ n, title, body, icon: Icon, facts, meter }, i) => (
+              <Reveal key={n} delay={i * 70} className="h-full">
+                <div className="group relative flex h-full flex-col rounded-xl border border-white/[0.07] bg-[#0b0c0f] p-5 transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-[#0e0f13]">
+                  {/* connector into the next step */}
+                  {i < WORKFLOW.length - 1 && (i + 1) % 3 !== 0 && (
+                    <span className="absolute -right-[13px] top-1/2 z-10 hidden -translate-y-1/2 text-white/15 transition-colors duration-300 group-hover:text-white/40 lg:block">
+                      <ChevronRight className="h-4 w-4" />
+                    </span>
+                  )}
+
                   <div className="flex items-start justify-between">
-                    <Icon className="h-4 w-4 text-white/40 transition-colors duration-300 group-hover:text-emerald-300" />
-                    <span className="font-mono text-[11px] text-white/20 transition-colors group-hover:text-white/40">{n}</span>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] transition-colors duration-300 group-hover:border-emerald-400/30 group-hover:bg-emerald-400/[0.06]">
+                      <Icon className="h-3.5 w-3.5 text-white/55 transition-colors duration-300 group-hover:text-emerald-300" />
+                    </span>
+                    <span className="font-mono text-[11px] tracking-[0.12em] text-white/20 transition-colors group-hover:text-white/45">
+                      {n}
+                    </span>
                   </div>
+
                   <h3 className="mt-4 text-[14px] font-medium">{title}</h3>
                   <p className="mt-1.5 text-[12.5px] leading-relaxed text-white/40">{body}</p>
+
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {facts.map((fact) => (
+                      <span
+                        key={fact}
+                        className="rounded border border-white/[0.09] bg-white/[0.025] px-1.5 py-0.5 font-mono text-[10px] text-white/45 transition-colors group-hover:border-white/[0.14] group-hover:text-white/60"
+                      >
+                        {fact}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="mt-auto pt-5">
+                    <div className="flex items-baseline justify-between">
+                      <Mono className="text-white/25">{meter.label}</Mono>
+                      <span className={`font-mono text-[11px] tabular-nums ${METER_TONE[meter.tone].text}`}>
+                        {meter.display}
+                      </span>
+                    </div>
+                    <Meter ratio={meter.ratio} tone={meter.tone} />
+                  </div>
                 </div>
               </Reveal>
             ))}

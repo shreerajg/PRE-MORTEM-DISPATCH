@@ -81,7 +81,10 @@ test.describe('Landing page', () => {
     // Break the network on the landing page itself
     await page.getByRole('button', { name: /lane closed/i }).click();
     await expect(page.getByText('89.9%')).toBeVisible();
-    await expect(page.getByText('−500 units')).toBeVisible();
+
+    // Scoped to the diagram: the workflow cards repeat this figure as a fact chip
+    const diagram = page.getByRole('img', { name: /Distribution network/i });
+    await expect(diagram.getByText('−500 units')).toBeVisible();
     await expect(page.getByText('$22,620')).toBeVisible();
 
     // Recover it
