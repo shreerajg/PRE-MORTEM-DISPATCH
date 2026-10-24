@@ -100,6 +100,18 @@ test.describe('Landing page', () => {
     await expect(page.getByRole('heading', { name: /Operations Dashboard/i })).toBeVisible();
   });
 
+  test('sign in hands off to the login route', async ({ page }) => {
+    await page.goto('/');
+    const signIn = page.getByTestId('login-button');
+    await expect(signIn).toBeVisible();
+
+    // Default destination until the Firebase module is merged
+    await expect(signIn).toHaveAttribute('href', '/login');
+    await signIn.click();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  });
+
   test('renders without horizontal overflow on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');

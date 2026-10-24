@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import Landing from './pages/Landing';
+import LoginPlaceholder from './pages/LoginPlaceholder';
 import Dashboard from './pages/Dashboard';
 import Datasets from './pages/Datasets';
 import Planner from './pages/Planner';
@@ -15,6 +16,10 @@ export default function App() {
       <Routes>
         {/* Landing page is full-bleed: it sits outside the console shell */}
         <Route path="/" element={<Landing />} />
+
+        {/* Placeholder until the team's Firebase auth module lands (see the file header) */}
+        <Route path="/login" element={<LoginPlaceholder />} />
+
         <Route
           path="*"
           element={

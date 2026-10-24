@@ -55,8 +55,8 @@ Motion on the landing page: scroll-reveal per section, count-up statistics, an a
 drifting aurora gradients, a marquee of modelled constraints, and cursor spotlights on cards. All of
 it respects `prefers-reduced-motion`.
 
-**Routes:** `/` landing · `/dashboard` · `/datasets` · `/planner` · `/disruption` · `/recovery` ·
-`/compare` · `/exports`
+**Routes:** `/` landing · `/login` (auth placeholder) · `/dashboard` · `/datasets` · `/planner` ·
+`/disruption` · `/recovery` · `/compare` · `/exports`
 
 ---
 
@@ -196,9 +196,24 @@ SOLVER=greedy            # greedy | ortools | auto
 LLM_ENABLED=false
 API_PORT=8000
 MAX_UPLOAD_BYTES=5242880
+VITE_LOGIN_URL=          # frontend only; defaults to /login
 ```
 
 Uploads are capped per file and must be `.csv`. No secrets are required or committed.
+
+### Authentication hand-off
+
+The landing page exposes **Sign in** in the header, the closing CTA and the footer. Authentication
+itself is owned by another workstream (Firebase), so the frontend only needs a destination:
+
+| `VITE_LOGIN_URL` | Result |
+|---|---|
+| unset | Buttons point at `/login`, which renders a placeholder page stating auth is pending |
+| `/login` or a hosted URL | Buttons point there directly |
+
+To merge the Firebase module, either replace [`LoginPlaceholder.tsx`](apps/web/src/pages/LoginPlaceholder.tsx)
+with the real sign-in UI, or leave the repo alone and set `VITE_LOGIN_URL` — no component edits
+required. The console itself needs no account and continues to work either way.
 
 ---
 
@@ -208,8 +223,8 @@ Uploads are capped per file and must be `.csv`. No secrets are required or commi
 - **Not** forecasting. `GET /forecast` returns a labelled moving-average baseline (`model:
   "baseline"`, `fallback: true`). No trained model, no accuracy claim, and the allocator never
   consumes it silently.
-- **Not** multi-user. No auth, no roles — those were explicitly out of scope for a single-operator
-  demo, and adding them would have cost the workflow.
+- **Not** multi-user yet. The UI has a Sign-in entry point, but authentication is a separate
+  Firebase workstream; the console itself needs no account.
 - **Not** LLM-dependent. An LLM may narrate computed results later; it is never the source of
   quantities, costs or feasibility.
 
