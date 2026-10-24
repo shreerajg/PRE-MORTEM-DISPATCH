@@ -7,6 +7,8 @@ number computed, not narrated.
 > *"If this distribution plan fails under a specific disruption, what is affected, what can be
 > recovered, what will it cost, and what should we do next?"*
 
+![Landing page](docs/screenshots/landing.png)
+
 ---
 
 ## What it actually does
@@ -36,12 +38,19 @@ limiting destination×product rows. It never reports a success it cannot compute
 
 ### Screens
 
+The app opens on a **landing page** (`/`) that states the problem, shows one closed lane and its
+contingency lane in the network diagram, and puts the real computed numbers on the page. Every CTA
+routes into the console.
+
 | | |
 |---|---|
 | ![Operations dashboard](docs/screenshots/dashboard.png) | ![Baseline planner](docs/screenshots/planner.png) |
 | **Dashboard** — KPIs, capacity, recent scenario history | **Planner** — allocations, gaps, risk breakdown, solver status |
 | ![Recovery center](docs/screenshots/recovery.png) | ![Scenario comparison](docs/screenshots/compare.png) |
 | **Recovery** — activated lanes, per-shipment changes, residual | **Compare** — absolute values, deltas, deadline exposure |
+
+**Routes:** `/` landing · `/dashboard` · `/datasets` · `/planner` · `/disruption` · `/recovery` ·
+`/compare` · `/exports`
 
 ---
 
@@ -93,7 +102,7 @@ python -m pytest apps/api/tests -q          # 28 passed
 cd apps/web && npm run build
 
 # Browser E2E (needs both servers running)
-cd apps/web && npx playwright test          # 2 passed
+cd apps/web && npx playwright test          # 4 passed
 ```
 
 The suite asserts invariants, not just "it returned 200":
@@ -107,6 +116,7 @@ The suite asserts invariants, not just "it returned 200":
 - baseline is unchanged after a disruption is simulated against it
 - identical inputs reproduce identical allocations
 - exported CSV totals equal the computed plan totals
+- the landing page's headline numbers match the demo story, and it has no horizontal overflow at 390 px
 
 ---
 

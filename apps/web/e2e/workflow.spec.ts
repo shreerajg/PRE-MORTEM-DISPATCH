@@ -67,3 +67,32 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByText('No recovery run yet.')).toBeVisible();
   });
 });
+
+test.describe('Landing page', () => {
+  test('presents the product and routes into the console', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByRole('heading', { name: /Know what breaks/i })).toBeVisible();
+    await expect(page.getByText(/TRIWIZATHON 2026/i).first()).toBeVisible();
+
+    // The headline numbers shown on the landing page must match the real demo story
+    await expect(page.getByText('89.9%').first()).toBeVisible();
+    await expect(page.getByText(/\+\$3,410/).first()).toBeVisible();
+
+    // No horizontal overflow at mobile width (checked separately below)
+    await page.getByRole('link', { name: /run the workflow/i }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole('heading', { name: /Operations Dashboard/i })).toBeVisible();
+  });
+
+  test('renders without horizontal overflow on a phone', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: /Know what breaks/i })).toBeVisible();
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+});

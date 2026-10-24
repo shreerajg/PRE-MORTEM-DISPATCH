@@ -9,10 +9,49 @@
   * {
     @apply border-slate-200;
   }
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+/* Landing page: a closed lane pulses like a live fault */
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+@keyframes ping-soft {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+.animate-pulse-line {
+  animation: dash-flow 1.6s linear infinite;
+}
+
+.animate-ping-slow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ping-soft 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-line,
+  .animate-ping-slow {
+    animation: none;
   }
 }
