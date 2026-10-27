@@ -3,10 +3,16 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import get_cors_origins
-from app.core.errors import generic_exception_handler
+from app.core.errors import (
+    generic_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+)
 from app.repo.database import init_db
 
 
@@ -35,6 +41,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    application.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    application.add_exception_handler(RequestValidationError, validation_exception_handler)
     application.add_exception_handler(Exception, generic_exception_handler)
 
     # Routers are imported here so the app object exists before module-level imports run

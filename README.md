@@ -102,13 +102,13 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 28 passed
+python -m pytest apps/api/tests -q          # 40 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
 # Browser E2E (needs both servers running)
-cd apps/web && npx playwright test          # 5 passed
+cd apps/web && npx playwright test          # 6 passed
 ```
 
 The suite asserts invariants, not just "it returned 200":
@@ -187,7 +187,8 @@ demand.csv         destination_id,product_id,quantity
 
 ## Configuration
 
-Copy `.env.example` to `.env`:
+Copy `.env.example` to `.env` at the repository root (the API and Vite both read it;
+`apps/api/.env` also works for API-only overrides):
 
 ```ini
 DATABASE_URL=sqlite:///./data/app.db
@@ -221,8 +222,9 @@ required. The console itself needs no account and continues to work either way.
 
 - **Not** a claim of real-world optimality. It is a transparent model of a distribution network.
 - **Not** forecasting. `GET /forecast` returns a labelled moving-average baseline (`model:
-  "baseline"`, `fallback: true`). No trained model, no accuracy claim, and the allocator never
-  consumes it silently.
+  "baseline"`). With no matching demand history it returns an empty series and
+  `reason: "insufficient_history"` rather than inventing one. No trained model, no accuracy
+  claim, and the allocator never consumes it silently.
 - **Not** multi-user yet. The UI has a Sign-in entry point, but authentication is a separate
   Firebase workstream; the console itself needs no account.
 - **Not** LLM-dependent. An LLM may narrate computed results later; it is never the source of

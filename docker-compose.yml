@@ -6,11 +6,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: sqlite:///./data/app.db
+      # Absolute path so the mounted volume is the same file the app writes.
+      DATABASE_URL: sqlite:////app/data/app.db
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
       SOLVER: greedy
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   web:
@@ -20,5 +27,6 @@ services:
     ports:
       - "5173:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
