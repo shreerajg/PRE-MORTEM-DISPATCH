@@ -1,14 +1,22 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import Landing from './pages/Landing';
 import LoginPlaceholder from './pages/LoginPlaceholder';
-import Dashboard from './pages/Dashboard';
-import Datasets from './pages/Datasets';
-import Planner from './pages/Planner';
-import DisruptionLab from './pages/DisruptionLab';
-import Recovery from './pages/Recovery';
-import Compare from './pages/Compare';
-import Exports from './pages/Exports';
+
+// Console pages are split per route so the landing page (and the initial
+// bundle) never pays for Recharts or workflow screens it does not render.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Datasets = lazy(() => import('./pages/Datasets'));
+const Planner = lazy(() => import('./pages/Planner'));
+const DisruptionLab = lazy(() => import('./pages/DisruptionLab'));
+const Recovery = lazy(() => import('./pages/Recovery'));
+const Compare = lazy(() => import('./pages/Compare'));
+const Exports = lazy(() => import('./pages/Exports'));
+
+function PageFallback() {
+  return <div className="p-8 text-sm text-slate-500">Loading…</div>;
+}
 
 export default function App() {
   return (
@@ -24,16 +32,18 @@ export default function App() {
           path="*"
           element={
             <Layout>
-              <Routes>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/datasets" element={<Datasets />} />
-                <Route path="/planner" element={<Planner />} />
-                <Route path="/disruption" element={<DisruptionLab />} />
-                <Route path="/recovery" element={<Recovery />} />
-                <Route path="/compare" element={<Compare />} />
-                <Route path="/exports" element={<Exports />} />
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
+              <Suspense fallback={<PageFallback />}>
+                <Routes>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/datasets" element={<Datasets />} />
+                  <Route path="/planner" element={<Planner />} />
+                  <Route path="/disruption" element={<DisruptionLab />} />
+                  <Route path="/recovery" element={<Recovery />} />
+                  <Route path="/compare" element={<Compare />} />
+                  <Route path="/exports" element={<Exports />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </Suspense>
             </Layout>
           }
         />

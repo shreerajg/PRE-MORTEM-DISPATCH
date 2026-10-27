@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { PlanResponse } from '../lib/api';
 
 type AppState = {
@@ -17,26 +18,40 @@ type AppState = {
   reset: () => void;
 };
 
-export const useAppStore = create<AppState>((set) => ({
-  datasetId: null,
-  planId: null,
-  scenarioId: null,
-  baselinePlan: null,
-  disruptedPlan: null,
-  recoveredPlan: null,
-  setDatasetId: (datasetId) => set({ datasetId }),
-  setPlanId: (planId) => set({ planId }),
-  setScenarioId: (scenarioId) => set({ scenarioId }),
-  setBaselinePlan: (baselinePlan) => set({ baselinePlan }),
-  setDisruptedPlan: (disruptedPlan) => set({ disruptedPlan }),
-  setRecoveredPlan: (recoveredPlan) => set({ recoveredPlan }),
-  reset: () =>
-    set({
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
       datasetId: null,
       planId: null,
       scenarioId: null,
       baselinePlan: null,
       disruptedPlan: null,
       recoveredPlan: null,
+      setDatasetId: (datasetId) => set({ datasetId }),
+      setPlanId: (planId) => set({ planId }),
+      setScenarioId: (scenarioId) => set({ scenarioId }),
+      setBaselinePlan: (baselinePlan) => set({ baselinePlan }),
+      setDisruptedPlan: (disruptedPlan) => set({ disruptedPlan }),
+      setRecoveredPlan: (recoveredPlan) => set({ recoveredPlan }),
+      reset: () =>
+        set({
+          datasetId: null,
+          planId: null,
+          scenarioId: null,
+          baselinePlan: null,
+          disruptedPlan: null,
+          recoveredPlan: null,
+        }),
     }),
-}));
+    {
+      name: 'pre-mortem-dispatch',
+      // Plan payloads are large and already persisted server-side; only keep the
+      // identifiers needed to restore the working context across reloads.
+      partialize: (state) => ({
+        datasetId: state.datasetId,
+        planId: state.planId,
+        scenarioId: state.scenarioId,
+      }),
+    },
+  ),
+);

@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { listDatasets, createPlan, getPlan, getDataset, listPlans } from '../lib/api';
+import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 export default function Planner() {
@@ -53,6 +54,8 @@ export default function Planner() {
 
   const plan = planQuery.data;
   const kpis = plan?.kpis;
+  const solverStatus = plan?.solver_status ?? null;
+  const solverBadge = solverStatusTone(solverStatus, kpis?.unmet);
 
   return (
     <div className="space-y-6">
@@ -124,7 +127,8 @@ export default function Planner() {
           {createMut.isSuccess ? (
             <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
               Baseline plan created — {createMut.data.id.slice(0, 8)} · {createMut.data.allocations.length} allocations ·{' '}
-              {(createMut.data.kpis.fulfillment_rate * 100).toFixed(1)}% fulfilled
+              {(createMut.data.kpis.fulfillment_rate * 100).toFixed(1)}% fulfilled · solver{' '}
+              {createMut.data.solver_status ?? 'reported'}
             </div>
           ) : null}
         </CardContent>
@@ -153,7 +157,10 @@ export default function Planner() {
                 {baselines.map((p) => (
                   <TableRow key={p.id} className={p.id === activePlanId ? 'bg-slate-50' : undefined}>
                     <TableCell className="font-mono text-xs">{p.id.slice(0, 8)}</TableCell>
-                    <TableCell className="text-xs">{p.solver}</TableCell>
+                    <TableCell className="text-xs">
+                      {p.solver}
+                      {p.solver_status ? ` · ${p.solver_status}` : ''}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{((p.kpis?.fulfillment_rate ?? 0) * 100).toFixed(1)}%</TableCell>
                     <TableCell className="text-right tabular-nums">{Math.round(p.kpis?.unmet ?? 0)}</TableCell>
                     <TableCell className="text-right tabular-nums">${Math.round(p.kpis?.total_cost ?? 0).toLocaleString()}</TableCell>
@@ -180,7 +187,7 @@ export default function Planner() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={plan.status === 'optimal' || plan.status === 'completed' ? 'success' : 'warning'}>{plan.status}</Badge>
+            <Badge variant={solverBadge}>{solverStatus ?? plan.status}</Badge>
             <Badge variant="outline">Solver: {plan.solver}</Badge>
             <Badge variant="secondary">{plan.id.slice(0, 12)}…</Badge>
             <span className="text-xs text-slate-500">{new Date(plan.created_at).toLocaleString()}</span>

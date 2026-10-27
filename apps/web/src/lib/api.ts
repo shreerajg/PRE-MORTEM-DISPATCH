@@ -86,6 +86,7 @@ export type PlanResponse = {
   type: string;
   status: string;
   solver: string;
+  solver_status?: string | null;
   created_at: string;
   allocations: AllocationItem[];
   unmet: UnmetDemand[];
@@ -159,6 +160,7 @@ export type PlanSummary = {
   type: string;
   status: string;
   solver: string;
+  solver_status?: string | null;
   created_at: string;
   kpis: KPISnapshot;
   allocation_count: number;
@@ -200,9 +202,9 @@ export type RecoverResponse = {
 };
 
 export type CompareResponse = {
-  baseline: { plan_id: string; kpis: KPISnapshot | null; plan: unknown };
-  disrupted: { plan_id: string; kpis: KPISnapshot | null; plan: unknown } | null;
-  recovered: { plan_id: string; kpis: KPISnapshot | null; plan: unknown } | null;
+  baseline: { plan_id: string; kpis: KPISnapshot | null; plan: unknown; solver_status?: string | null };
+  disrupted: { plan_id: string; kpis: KPISnapshot | null; plan: unknown; solver_status?: string | null } | null;
+  recovered: { plan_id: string; kpis: KPISnapshot | null; plan: unknown; solver_status?: string | null } | null;
   deltas: Record<string, { fulfillment_delta: number; cost_delta: number; unmet_delta: number }>;
   delivery_risk?: {
     baseline: DeliveryRisk | null;
@@ -219,6 +221,8 @@ export type ForecastResponse = {
   model: string;
   forecast: { period: number; quantity: number }[] | number[] | Record<string, unknown>[];
   history_used: Record<string, unknown>[];
+  fallback?: boolean;
+  reason?: string | null;
 };
 
 // ---------------------------------------------------------------------------

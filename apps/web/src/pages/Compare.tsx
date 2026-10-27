@@ -9,6 +9,7 @@ import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
 import { compareScenario, listScenarios } from '../lib/api';
+import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -163,10 +164,21 @@ export default function Compare() {
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">Baseline {String(cmp.baseline?.plan_id ?? '—').slice(0, 8)}</Badge>
-            {cmp.disrupted ? <Badge variant="destructive">Disrupted {String(cmp.disrupted.plan_id).slice(0, 8)}</Badge> : null}
+            <Badge variant={solverStatusTone(cmp.baseline?.solver_status, cmp.baseline?.kpis?.unmet)}>
+              Baseline {String(cmp.baseline?.plan_id ?? '—').slice(0, 8)}
+              {cmp.baseline?.solver_status ? ` · ${cmp.baseline.solver_status}` : ''}
+            </Badge>
+            {cmp.disrupted ? (
+              <Badge variant="destructive">
+                Disrupted {String(cmp.disrupted.plan_id).slice(0, 8)}
+                {cmp.disrupted.solver_status ? ` · ${cmp.disrupted.solver_status}` : ''}
+              </Badge>
+            ) : null}
             {cmp.recovered ? (
-              <Badge variant="success">Recovered {String(cmp.recovered.plan_id).slice(0, 8)}</Badge>
+              <Badge variant={solverStatusTone(cmp.recovered.solver_status, cmp.recovered.kpis?.unmet)}>
+                Recovered {String(cmp.recovered.plan_id).slice(0, 8)}
+                {cmp.recovered.solver_status ? ` · ${cmp.recovered.solver_status}` : ''}
+              </Badge>
             ) : (
               <Badge variant="outline">No recovery yet</Badge>
             )}

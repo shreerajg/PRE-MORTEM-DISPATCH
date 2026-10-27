@@ -61,9 +61,19 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
   });
 
   test('empty states explain what to do next', async ({ page }) => {
+    // Pin the scenario list to empty so the assertion cannot race a seeded backend.
+    await page.route('**/api/v1/scenarios/?limit=*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ scenarios: [], total: 0 }),
+      }),
+    );
+
     await page.goto('/recovery');
     // The scenario selector and its empty-state guidance must both be reachable
     await expect(page.getByLabel('Scenario')).toBeVisible();
+    await expect(page.getByText(/No scenarios yet/)).toBeVisible();
     await expect(page.getByText('No recovery run yet.')).toBeVisible();
   });
 });

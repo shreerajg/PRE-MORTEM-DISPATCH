@@ -19,6 +19,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { health, getPlan, listPlans, listScenarios } from '../lib/api';
+import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const PIE_COLORS = ['#0f172a', '#f87171'];
@@ -75,8 +76,9 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {plan ? (
-            <Badge variant="secondary">
+            <Badge variant={solverStatusTone(plan.solver_status, plan.kpis?.unmet)}>
               Plan {plan.id.slice(0, 8)} · {plan.solver}
+              {plan.solver_status ? ` · ${plan.solver_status}` : ''}
             </Badge>
           ) : null}
         </div>
@@ -257,7 +259,7 @@ export default function Dashboard() {
               <CardDescription>
                 {planLoading
                   ? 'Loading plan…'
-                  : `${plan!.type} · ${plan!.status} · solver ${plan!.solver} · ${plan!.allocations.length} allocations`}
+                  : `${plan!.type} · ${plan!.solver_status ?? plan!.status} · solver ${plan!.solver} · ${plan!.allocations.length} allocations`}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">

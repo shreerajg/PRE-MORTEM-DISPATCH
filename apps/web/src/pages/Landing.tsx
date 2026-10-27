@@ -21,6 +21,14 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { health } from '../lib/api';
+import {
+  DEMO_EXTRA_COST,
+  DEMO_LANES,
+  DEMO_NETWORK,
+  DEMO_RECOVERY_GAIN_PP,
+  DEMO_STORY,
+  type DemoPhase,
+} from '../lib/demoStory';
 import { Reveal, useCountUp, useInView, usePrefersReducedMotion, useSpotlight } from '../lib/motion';
 
 /**
@@ -113,13 +121,9 @@ function Words({ text, startDelay = 0, className = '' }: { text: string; startDe
 /* Interactive network demo                                            */
 /* ------------------------------------------------------------------ */
 
-type Phase = 'baseline' | 'disrupted' | 'recovered';
+type Phase = DemoPhase;
 
-const PHASES: Record<Phase, { label: string; fulfillment: number; unmet: number; cost: number; note: string }> = {
-  baseline: { label: 'Baseline', fulfillment: 100, unmet: 0, cost: 24240, note: 'All demand covered on primary lanes.' },
-  disrupted: { label: 'Lane closed', fulfillment: 89.9, unmet: 500, cost: 22620, note: 'RT-03 out. 500 units of DST-01 unserved.' },
-  recovered: { label: 'Recovered', fulfillment: 100, unmet: 0, cost: 26030, note: 'Contingency lane RT-13 absorbs the gap.' },
-};
+const PHASES = DEMO_STORY;
 
 const WAREHOUSES = [
   { id: 'WH-01', y: 46 },
@@ -248,7 +252,7 @@ function NetworkDiagram({ phase }: { phase: Phase }) {
             </text>
             {isShort && (
               <text x="466" y={d.y + 13} fill="rgba(220,38,38,0.75)" fontSize="7" fontFamily="ui-monospace, monospace">
-                −500 units
+                −{DEMO_STORY.disrupted.unmet} units
               </text>
             )}
           </g>
@@ -374,7 +378,7 @@ const CAPABILITIES = [
     icon: HeartPulse,
     title: 'Constraint-checked recovery',
     body: 'Contingency lanes buy back demand; every shipment is verified.',
-    metric: '+$3,410 → +10.1pp',
+    metric: `+$${DEMO_EXTRA_COST.toLocaleString()} → +${DEMO_RECOVERY_GAIN_PP.toFixed(1)}pp`,
   },
   {
     icon: GitCompare,
@@ -390,7 +394,7 @@ const WORKFLOW = [
     title: 'Load',
     icon: Boxes,
     body: 'Sample network or your own CSVs, validated first.',
-    facts: ['4 warehouses', '8 destinations', '20 lanes'],
+    facts: [`${DEMO_NETWORK.warehouses} warehouses`, `${DEMO_NETWORK.destinations} destinations`, `${DEMO_NETWORK.lanes} lanes`],
     meter: { label: 'tables validated', display: '6 / 6', ratio: 1, tone: 'neutral' as const },
   },
   {
@@ -398,7 +402,7 @@ const WORKFLOW = [
     title: 'Plan',
     icon: Calculator,
     body: 'Constrained baseline, every unit attributed.',
-    facts: ['27 shipments', '5 constraints', 'greedy · feasible'],
+    facts: [`${DEMO_NETWORK.shipments} shipments`, '5 constraints', 'greedy · feasible'],
     meter: { label: 'demand fulfilled', display: '100.0%', ratio: 1, tone: 'neutral' as const },
   },
   {
@@ -406,15 +410,15 @@ const WORKFLOW = [
     title: 'Break',
     icon: Zap,
     body: 'Rewrite the inputs, solve again. No charts faked.',
-    facts: ['RT-03 closed', '1 of 20 lanes', '500 at risk'],
-    meter: { label: 'lanes available', display: '19 / 20', ratio: 19 / 20, tone: 'warn' as const },
+    facts: [`${DEMO_LANES.closed} closed`, `1 of ${DEMO_NETWORK.lanes} lanes`, `${DEMO_STORY.disrupted.unmet} unmet`],
+    meter: { label: 'lanes available', display: `${DEMO_NETWORK.lanes - 1} / ${DEMO_NETWORK.lanes}`, ratio: (DEMO_NETWORK.lanes - 1) / DEMO_NETWORK.lanes, tone: 'warn' as const },
   },
   {
     n: '04',
     title: 'Measure',
     icon: Activity,
     body: 'The gap between two computed plans.',
-    facts: ['−500 units', 'risk 23.8', '0 late'],
+    facts: [`−${DEMO_STORY.disrupted.unmet} units`, `risk ${DEMO_STORY.disrupted.risk.toFixed(2)}`, '0 late'],
     meter: { label: 'demand fulfilled', display: '89.9%', ratio: 0.899, tone: 'bad' as const },
   },
   {
@@ -422,7 +426,7 @@ const WORKFLOW = [
     title: 'Recover',
     icon: HeartPulse,
     body: 'Shortfall bought back, never invented.',
-    facts: ['RT-13 · RT-16 · RT-19', '+$3,410', 'residual 0'],
+    facts: [DEMO_LANES.contingency.join(' · '), `+$${DEMO_EXTRA_COST.toLocaleString()}`, 'residual 0'],
     meter: { label: 'demand recovered', display: '100.0%', ratio: 1, tone: 'good' as const },
   },
   {

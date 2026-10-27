@@ -9,6 +9,7 @@ import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { createScenario, getDataset, listPlans, type ImpactSummary, type PlanResponse } from '../lib/api';
+import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 type DisruptionType = 'inventory_shortage' | 'route_closure' | 'route_delay' | 'supply_interruption';
@@ -277,7 +278,9 @@ export default function DisruptionLab() {
               <p className="text-sm text-slate-700">{impact.disruption_description}</p>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="destructive">Disrupted · {disrupted.solver}</Badge>
-                <Badge variant="outline">{disrupted.status}</Badge>
+                <Badge variant={solverStatusTone(disrupted.solver_status, disrupted.kpis.unmet)}>
+                  {disrupted.solver_status ?? disrupted.status}
+                </Badge>
                 <Badge variant="secondary">{(disrupted.kpis.fulfillment_rate * 100).toFixed(1)}% fulfilled</Badge>
                 <Badge variant="secondary">{Math.round(disrupted.kpis.unmet).toLocaleString()} unmet</Badge>
                 <Badge variant="secondary">${Math.round(disrupted.kpis.total_cost).toLocaleString()} cost</Badge>
