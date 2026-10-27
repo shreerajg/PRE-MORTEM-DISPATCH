@@ -30,12 +30,18 @@ def _resolve_priority(demand_item: Demand, priorities: Dict[str, int]) -> int:
     return 3
 
 
-def _try_ortools(input_data: AllocationInput, priority_map: Dict[Tuple[str, str], int], allow_backup: bool = False) -> AllocationResult | None:
+def _try_ortools(
+    input_data: AllocationInput,
+    priority_map: Dict[Tuple[str, str], int],
+    allow_backup: bool = False,
+    solver_name: str | None = None,
+) -> AllocationResult | None:
     """
     Attempt to solve with OR-Tools linear solver minimizing cost + penalty*unmet_priority_weighted.
     Returns None if OR-Tools not available or solver fails to indicate fallback to greedy.
     """
-    if settings.solver not in ("ortools", "auto"):
+    active_solver = solver_name or settings.solver
+    if active_solver not in ("ortools", "auto"):
         return None
     try:
         from ortools.linear_solver import pywraplp
@@ -191,11 +197,15 @@ def _try_ortools(input_data: AllocationInput, priority_map: Dict[Tuple[str, str]
 
         fulfillment_rate = ((total_demand - total_unmet) / total_demand) if total_demand > 0 else 1.0
 
-        # utilization
+        # utilization — measure used capacity against the lanes this plan could use:
+        # available, and contingency lanes only when recovery activated them.
         total_inventory = sum(float(v) for v in inv_map.values())
         used_inventory = total_demand - total_unmet  # simplified
         wh_util = (used_inventory / total_inventory) if total_inventory > 0 else 0.0
-        total_route_cap = sum(float(r.capacity) for r in route_list)
+        eligible_routes = [
+            r for r in route_list if r.available and (allow_backup or not r.backup)
+        ]
+        total_route_cap = sum(float(r.capacity) for r in eligible_routes)
         used_route_cap = sum(route_used.values())
         route_util = (used_route_cap / total_route_cap) if total_route_cap > 0 else 0.0
 
@@ -229,8 +239,12 @@ def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str
 
     inventory = input_data.inventory
     demand = input_data.demand
-    # Contingency lanes stay dormant unless recovery explicitly activates them
-    routes = [r for r in input_data.routes if allow_backup or not r.backup]
+    # Contingency lanes stay dormant unless recovery explicitly activates them.
+    # Unavailable lanes are not part of the usable network and must not inflate
+    # the utilization denominator.
+    routes = [
+        r for r in input_data.routes if r.available and (allow_backup or not r.backup)
+    ]
 
     # inventory map (wh,prod)->qty remaining
     inv_remaining: Dict[Tuple[str, str], float] = {}
@@ -347,8 +361,9 @@ def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str
     route_util = (used_route_cap / total_route_cap) if total_route_cap > 0 else 0.0
 
     elapsed = time.perf_counter() - start
-    # status: if no unmet -> optimal, else feasible (never infeasible per spec)
-    status = "optimal" if total_unmet <= 1e-6 else "feasible"
+    # Greedy is a heuristic: it returns a feasible plan. Claiming optimality here
+    # would misreport what the engine actually proved.
+    status = "feasible"
 
     return AllocationResult(
         allocations=allocations,
@@ -370,13 +385,24 @@ def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str
     )
 
 
-def solve_allocation(input: AllocationInput, allow_backup: bool = False) -> AllocationResult:
+def solve_allocation(
+    input: AllocationInput,
+    allow_backup: bool = False,
+    solver: str | None = None,
+) -> AllocationResult:
     """
     Greedy allocation engine with optional OR-Tools fallback.
 
     ``allow_backup`` activates contingency lanes. Baseline and disrupted plans use
     primary lanes only; recovery sets this to True to restore fulfillment at premium cost.
+
+    ``solver`` overrides ``settings.solver`` for this call only. Passing the choice
+    explicitly keeps request handling concurrency-safe.
     """
+    if solver is not None and solver not in ("greedy", "ortools", "auto"):
+        raise ValueError(f"Unknown solver '{solver}'; allowed greedy, ortools, auto")
+    active_solver = solver or settings.solver
+
     # Build priority map per (dst,prod)
     priority_map: Dict[Tuple[str, str], int] = {}
     # If priorities override dict provided, use it for all demands from that destination
@@ -396,7 +422,9 @@ def solve_allocation(input: AllocationInput, allow_backup: bool = False) -> Allo
         priority_map[key] = 3
 
     # Try OR-Tools first if enabled
-    ort_result = _try_ortools(input, priority_map, allow_backup=allow_backup)
+    ort_result = _try_ortools(
+        input, priority_map, allow_backup=allow_backup, solver_name=active_solver
+    )
     if ort_result is not None:
         return ort_result
 
@@ -405,7 +433,7 @@ def solve_allocation(input: AllocationInput, allow_backup: bool = False) -> Allo
     if allow_backup:
         greedy.diagnostics["backup_lanes_enabled"] = True
     # If ortools was desired but unavailable, keep greedy but mark diagnostics
-    if settings.solver in ("ortools", "auto"):
+    if active_solver in ("ortools", "auto"):
         greedy.diagnostics["ortools_attempted"] = True
         greedy.diagnostics["fallback"] = "greedy"
     return greedy

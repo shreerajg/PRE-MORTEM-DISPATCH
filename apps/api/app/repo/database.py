@@ -180,6 +180,42 @@ def get_plan(plan_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def list_plans(limit: int = 25, plan_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Recent plan summaries, newest first. Filtering happens before LIMIT."""
+    limit = max(1, min(limit, 100))
+    query = "SELECT id, dataset_id, type, status, solver, created_at, data FROM plans"
+    params: List[Any] = []
+    if plan_type:
+        query += " WHERE type = ?"
+        params.append(plan_type)
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+
+    conn = _connect()
+    try:
+        cur = conn.execute(query, params)
+        result: List[Dict[str, Any]] = []
+        for row in cur.fetchall():
+            data = json.loads(row["data"]) if row["data"] else {}
+            result.append(
+                {
+                    "id": row["id"],
+                    "dataset_id": row["dataset_id"],
+                    "type": row["type"],
+                    "status": row["status"],
+                    "solver": row["solver"],
+                    "solver_status": data.get("status_detail"),
+                    "created_at": row["created_at"],
+                    "kpis": data.get("kpis", {}),
+                    "allocation_count": len(data.get("allocations", []) or []),
+                    "unmet_count": len(data.get("unmet", []) or []),
+                }
+            )
+        return result
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Scenario helpers
 # ---------------------------------------------------------------------------

@@ -56,17 +56,22 @@ Re-runs validation against the stored rows and returns a `ValidationReport`.
 
 ## Plans
 
+`status` is the workflow state (`completed`). `solver_status` is the engine's own
+verdict (`optimal`, `feasible`, `infeasible`, `error`); the greedy engine always
+reports `feasible` because it does not prove optimality.
+
 ### `POST /plans`
 ```json
 { "dataset_id": "uuid", "solver": "greedy" }
 ```
-`solver` is optional (`greedy | ortools | auto`). Defaults to server config.
+`solver` is optional (`greedy | ortools | auto`). Defaults to server config and
+applies to this request only.
 
 Response:
 ```json
 {
   "id": "uuid", "dataset_id": "uuid", "type": "baseline", "status": "completed",
-  "solver": "greedy", "created_at": "...",
+  "solver": "greedy", "solver_status": "feasible", "created_at": "...",
   "allocations": [{ "warehouse_id": "WH-02", "destination_id": "DST-01", "product_id": "PRD-A",
                     "route_id": "RT-03", "quantity": 300.0 }],
   "unmet": [{ "destination_id": "DST-08", "product_id": "PRD-C", "quantity": 160.0, "priority": 3 }],
@@ -83,10 +88,12 @@ Response:
 ```
 
 ### `GET /plans/`
-`?limit=25&plan_type=baseline` → `{ "plans": [{ "id", "type", "kpis", "allocation_count", ... }], "total": n }`
+`?limit=25&plan_type=baseline` → `{ "plans": [{ "id", "type", "solver_status", "kpis", "allocation_count", ... }], "total": n }`.
+The type filter is applied before `limit`, so `limit=1&plan_type=baseline` is never
+emptied by newer plans of another type.
 
 ### `GET /plans/{id}`
-Same shape as the create response.
+Same shape as the create response, including `solver_status`.
 
 ---
 
@@ -126,6 +133,8 @@ Response:
 ```
 
 Errors: `400` for unknown type or missing/invalid params, `404` for unknown baseline plan.
+The referenced plan must have `type: "baseline"`; pointing at a disrupted or recovered
+plan is a `400`.
 
 ### `GET /scenarios/`
 `?limit=25` → recent scenarios with `kpis.{baseline,disrupted,recovered}`.
@@ -153,9 +162,9 @@ No body. Re-plans with contingency lanes enabled.
 ### `GET /scenarios/{id}/compare`
 ```json
 {
-  "baseline":  { "plan_id", "kpis", "plan" },
-  "disrupted": { "plan_id", "kpis", "plan" },
-  "recovered": { "plan_id", "kpis", "plan" } | null,
+  "baseline":  { "plan_id", "kpis", "plan", "solver_status" },
+  "disrupted": { "plan_id", "kpis", "plan", "solver_status" },
+  "recovered": { "plan_id", "kpis", "plan", "solver_status" } | null,
   "deltas": {
     "disrupted_vs_baseline":  { "fulfillment_delta": -0.1006, "cost_delta": -1620, "unmet_delta": 500 },
     "recovered_vs_disrupted": { "fulfillment_delta": 0.1006, "cost_delta": 3410, "unmet_delta": -500 },
@@ -183,12 +192,21 @@ recomputed at export time.
 ```
 
 ### `GET /forecast?destination_id=&product_id=&horizon=`
-Baseline moving-average forecast (window 3) with widened p10/p90 band. **Labeled
-`model: "baseline"` and `fallback: true`** — this is not a trained model and no accuracy is
-claimed. Allocation never consumes it implicitly.
+Baseline moving-average forecast (window 3) with widened p10/p90 band, computed only
+from demand rows that match the requested destination×product. **Labeled
+`model: "baseline"`** — this is not a trained model and no accuracy is claimed.
+Allocation never consumes it implicitly.
 
+With history (oldest → newest):
 ```json
 { "destination_id": "DST-01", "product_id": "PRD-A", "horizon": 4, "model": "baseline",
   "forecast": [ { "period": 1, "mean": 300.0, "p10": 240.0, "p90": 360.0 } ],
-  "history_used": [ { "quantity": 300.0 } ] }
+  "history_used": [ { "quantity": 300.0 } ],
+  "fallback": false, "reason": null }
+```
+
+With no matching history the endpoint does **not** fabricate a series:
+```json
+{ "destination_id": "DST-X", "product_id": "PRD-X", "horizon": 4, "model": "baseline",
+  "forecast": [], "history_used": [], "fallback": true, "reason": "insufficient_history" }
 ```

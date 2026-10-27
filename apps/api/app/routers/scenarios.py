@@ -71,6 +71,11 @@ def create_scenario(body: ScenarioCreate):
     baseline_plan = db.get_plan(body.baseline_plan_id)
     if not baseline_plan:
         raise HTTPException(status_code=404, detail=f"Baseline plan {body.baseline_plan_id} not found")
+    if baseline_plan.get("type") != "baseline":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan {body.baseline_plan_id} is a '{baseline_plan.get('type')}' plan; scenarios require a baseline plan",
+        )
 
     dataset_id = baseline_plan["dataset_id"]
     ds = db.get_dataset(dataset_id)
@@ -157,7 +162,7 @@ def create_scenario(body: ScenarioCreate):
         "disruption_description": description,
     }
 
-    return {"scenario": {"id": scenario_id, "baseline_plan_id": body.baseline_plan_id, "disruption": disruption_dict, "disrupted_plan_id": disrupted_plan_id, "status": "disrupted", "created_at": created_at}, "disrupted_plan": {"id": disrupted_plan_id, "dataset_id": dataset_id, "type": "disrupted", "status": "completed", "solver": disrupted_result.solver, "created_at": created_at, "allocations": disrupted_data["allocations"], "unmet": disrupted_data["unmet"], "kpis": disrupted_data["kpis"]}, "impact": impact}
+    return {"scenario": {"id": scenario_id, "baseline_plan_id": body.baseline_plan_id, "disruption": disruption_dict, "disrupted_plan_id": disrupted_plan_id, "status": "disrupted", "created_at": created_at}, "disrupted_plan": {"id": disrupted_plan_id, "dataset_id": dataset_id, "type": "disrupted", "status": "completed", "solver": disrupted_result.solver, "solver_status": disrupted_result.status, "created_at": created_at, "allocations": disrupted_data["allocations"], "unmet": disrupted_data["unmet"], "kpis": disrupted_data["kpis"]}, "impact": impact}
 
 
 @router.get("/{scenario_id}")
@@ -242,7 +247,7 @@ def recover_scenario(scenario_id: str):
     recovery_actions = recovered_result.diagnostics.get("recovery_actions", []) if isinstance(recovered_result.diagnostics, dict) else []
     residual_unmet = recovered_data["unmet"]
 
-    return {"recovered_plan": {"id": recovered_plan_id, "dataset_id": dataset_id, "type": "recovered", "status": "completed", "solver": recovered_result.solver, "created_at": created_at, "allocations": recovered_data["allocations"], "unmet": recovered_data["unmet"], "kpis": recovered_data["kpis"]}, "recovery_actions": recovery_actions, "residual_unmet": residual_unmet}
+    return {"recovered_plan": {"id": recovered_plan_id, "dataset_id": dataset_id, "type": "recovered", "status": "completed", "solver": recovered_result.solver, "solver_status": recovered_result.status, "created_at": created_at, "allocations": recovered_data["allocations"], "unmet": recovered_data["unmet"], "kpis": recovered_data["kpis"]}, "recovery_actions": recovery_actions, "residual_unmet": residual_unmet}
 
 
 @router.get("/{scenario_id}/compare")
@@ -356,9 +361,17 @@ def compare_scenario(scenario_id: str):
         narrative = "Baseline plan ready. Create a disruption scenario to compare impact."
 
     # Build baseline/disrupted/recovered dicts for CompareResponse
-    baseline_out = {"plan_id": scen["baseline_plan_id"], "kpis": baseline_k, "plan": baseline_plan}
-    disrupted_out = {"plan_id": scen.get("disrupted_plan_id"), "kpis": disrupted_k, "plan": disrupted_plan} if disrupted_k else None
-    recovered_out = {"plan_id": scen.get("recovered_plan_id"), "kpis": recovered_k, "plan": recovered_plan} if recovered_k else None
+    def plan_out(plan_id, plan):
+        return {
+            "plan_id": plan_id,
+            "kpis": extract_kpis(plan),
+            "plan": plan,
+            "solver_status": (plan or {}).get("data", {}).get("status_detail"),
+        }
+
+    baseline_out = plan_out(scen["baseline_plan_id"], baseline_plan)
+    disrupted_out = plan_out(scen.get("disrupted_plan_id"), disrupted_plan) if disrupted_k else None
+    recovered_out = plan_out(scen.get("recovered_plan_id"), recovered_plan) if recovered_k else None
 
     return {
         "baseline": baseline_out or {},

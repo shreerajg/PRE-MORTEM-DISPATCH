@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.domain.schemas import AllocationInput, Demand, Inventory, Route
+from app.domain.schemas import AllocationInput
 from app.repo import database as db
 from app.services.allocation import solve_allocation
 from app.services.kpi import compute_delivery_risk, compute_kpis
@@ -16,31 +15,17 @@ from app.services.normalize import build_network, load_destinations
 
 router = APIRouter(prefix="/api/v1/plans", tags=["plans"])
 
+_SOLVERS = ("greedy", "ortools", "auto")
+
 
 class PlanCreateRequest(BaseModel):
     dataset_id: str
     solver: Optional[str] = None
 
 
-def _build_allocation_input(meta: Dict[str, Any], solver_override: Optional[str] = None) -> AllocationInput:
+def _build_allocation_input(meta: Dict[str, Any]) -> AllocationInput:
     inventory, demand, routes, priorities = build_network(meta)
-
-    if solver_override:
-        from app.core.config import settings
-
-        if solver_override not in ("greedy", "ortools", "auto"):
-            raise HTTPException(status_code=400, detail=f"Invalid solver '{solver_override}'; allowed greedy, ortools, auto")
-        original = settings.solver
-        settings.solver = solver_override
-        try:
-            inp = AllocationInput(inventory=inventory, demand=demand, routes=routes, priorities=priorities)
-        finally:
-            pass
-        inp._solver_override_original = original  # type: ignore
-    else:
-        inp = AllocationInput(inventory=inventory, demand=demand, routes=routes, priorities=priorities)
-
-    return inp
+    return AllocationInput(inventory=inventory, demand=demand, routes=routes, priorities=priorities)
 
 
 @router.post("/")
@@ -48,28 +33,12 @@ def create_plan(body: PlanCreateRequest):
     ds = db.get_dataset(body.dataset_id)
     if not ds:
         raise HTTPException(status_code=404, detail=f"Dataset {body.dataset_id} not found")
+    if body.solver is not None and body.solver not in _SOLVERS:
+        raise HTTPException(status_code=400, detail=f"Invalid solver '{body.solver}'; allowed {', '.join(_SOLVERS)}")
     meta = ds.get("meta", {})
 
-    allocation_input = _build_allocation_input(meta, body.solver)
-
-    # Solve
-    from app.core.config import settings as cfg_settings
-
-    original_solver = None
-    if hasattr(allocation_input, "_solver_override_original"):
-        original_solver = getattr(allocation_input, "_solver_override_original")
-        # allocation_input currently has solver overridden via settings already
-        try:
-            result = solve_allocation(allocation_input)
-        finally:
-            cfg_settings.solver = original_solver
-            # clean attr
-            try:
-                delattr(allocation_input, "_solver_override_original")
-            except Exception:
-                pass
-    else:
-        result = solve_allocation(allocation_input)
+    allocation_input = _build_allocation_input(meta)
+    result = solve_allocation(allocation_input, solver=body.solver)
 
     # Compute KPIs
     kpi = compute_kpis(result, allocation_input.inventory, allocation_input.demand, allocation_input.routes)
@@ -106,6 +75,7 @@ def create_plan(body: PlanCreateRequest):
         "type": "baseline",
         "status": "completed",
         "solver": solver_used,
+        "solver_status": result.status,
         "created_at": created_at,
         "allocations": data["allocations"],
         "unmet": data["unmet"],
@@ -117,41 +87,11 @@ def create_plan(body: PlanCreateRequest):
 @router.get("/")
 def list_plans(limit: int = 25, plan_type: Optional[str] = None):
     """Recent plans, newest first — powers plan pickers in the UI."""
-    conn_rows: List[Dict[str, Any]] = []
     try:
-        import sqlite3
-
-        from app.repo.database import _connect
-
-        conn = _connect()
-        try:
-            cur = conn.execute(
-                "SELECT id, dataset_id, type, status, solver, created_at, data FROM plans ORDER BY created_at DESC LIMIT ?",
-                (max(1, min(limit, 100)),),
-            )
-            for row in cur.fetchall():
-                data = json.loads(row["data"]) if row["data"] else {}
-                conn_rows.append(
-                    {
-                        "id": row["id"],
-                        "dataset_id": row["dataset_id"],
-                        "type": row["type"],
-                        "status": row["status"],
-                        "solver": row["solver"],
-                        "created_at": row["created_at"],
-                        "kpis": data.get("kpis", {}),
-                        "allocation_count": len(data.get("allocations", []) or []),
-                        "unmet_count": len(data.get("unmet", []) or []),
-                    }
-                )
-        finally:
-            conn.close()
+        plans = db.list_plans(limit=limit, plan_type=plan_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-    if plan_type:
-        conn_rows = [r for r in conn_rows if r["type"] == plan_type]
-    return {"plans": conn_rows, "total": len(conn_rows)}
+    return {"plans": plans, "total": len(plans)}
 
 
 @router.get("/{plan_id}")
@@ -168,6 +108,7 @@ def get_plan(plan_id: str):
         "type": plan["type"],
         "status": plan["status"],
         "solver": plan["solver"],
+        "solver_status": data.get("status_detail"),
         "created_at": plan["created_at"],
         "allocations": data.get("allocations", []),
         "unmet": data.get("unmet", []),

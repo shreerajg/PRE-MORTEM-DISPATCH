@@ -142,6 +142,47 @@ def test_zero_demand_network_is_handled():
     assert result.fulfillment_rate == pytest.approx(1.0)
 
 
+def test_unavailable_lanes_are_excluded_from_utilization():
+    inp = _toy_network()
+    available_capacity = sum(r.capacity for r in inp.routes)
+    inp.routes[0].available = False
+
+    result = solve_allocation(inp)
+
+    remaining = available_capacity - inp.routes[0].capacity
+    assert result.utilization["total_route_capacity"] == pytest.approx(remaining)
+
+
+def test_backup_lanes_only_enter_utilization_when_activated():
+    inp = _toy_network()
+    inp.routes.append(
+        Route(
+            id="R5",
+            warehouse_id="WH-B",
+            destination_id="D2",
+            capacity=30,
+            cost_per_unit=9.0,
+            time_days=3,
+            backup=True,
+        )
+    )
+    primary_capacity = sum(r.capacity for r in inp.routes if not r.backup)
+
+    normal = solve_allocation(inp, allow_backup=False)
+    assert normal.utilization["total_route_capacity"] == pytest.approx(primary_capacity)
+
+    recovered = solve_allocation(inp, allow_backup=True)
+    assert recovered.utilization["total_route_capacity"] == pytest.approx(primary_capacity + 30)
+
+
+def test_solver_argument_overrides_settings(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "solver", "auto")
+    result = solve_allocation(_toy_network(), solver="greedy")
+    assert result.solver == "greedy"
+
+
 def test_solver_status_is_explicit():
     inp = _toy_network()
     result = solve_allocation(inp)

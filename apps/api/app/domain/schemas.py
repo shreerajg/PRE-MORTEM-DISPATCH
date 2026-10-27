@@ -33,7 +33,12 @@ class Destination(BaseModel):
 
     id: str = Field(..., description="Unique destination identifier")
     name: str = Field(..., description="Display name of the destination")
-    priority: int = Field(..., ge=1, le=5, description="Priority 1 (lowest) - 5 (highest)")
+    priority: int = Field(
+        ...,
+        ge=1,
+        le=5,
+        description="Priority 1 (most critical) - 5 (least critical); lower values are served first",
+    )
     region: str = Field(..., description="Geographic region of the destination")
     deadline_days: Optional[int] = Field(default=None, ge=0, description="Deadline in days from plan start")
 

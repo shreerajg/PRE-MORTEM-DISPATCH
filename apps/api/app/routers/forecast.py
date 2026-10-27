@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.services.ml.baseline import baseline_forecast
 
-# In a real app history would come from DB; for now we synthesize or accept mock history.
-# We attempt to load history from dataset demand if destination/product matches, but fallback to dummy.
+# History is derived from dataset demand rows. When no matching history exists the
+# endpoint reports that explicitly instead of inventing a series.
 
 router = APIRouter(prefix="/api/v1", tags=["forecast"])
 
@@ -18,29 +18,36 @@ def get_forecast(
     product_id: str = Query(..., description="Product id"),
     horizon: int = Query(4, ge=1, le=52, description="Forecast horizon"),
 ):
-    # Try to build history from datasets if available; else use empty
+    # Build history from stored datasets; one demand row per dataset is one period.
     history: List[Dict[str, Any]] = []
     try:
         from app.repo import database as db
 
-        datasets = db.list_datasets()
-        # Gather histories: look for demand entries matching destination/product
-        # Use quantity as history points; we will produce a time series per dataset
+        datasets = db.list_datasets()  # newest first
         for ds in datasets:
             meta = ds.get("meta", {})
             demand_list = meta.get("demand", [])
             for dem in demand_list:
                 if str(dem.get("destination_id")) == str(destination_id) and str(dem.get("product_id")) == str(product_id):
-                    # treat each demand quantity as one historical period
                     history.append({"quantity": float(dem.get("quantity", 0) or 0)})
                     break
     except Exception:
         history = []
 
-    # If no history found, fabricate a simple series so forecast is not empty
     if not history:
-        # Use a default constant series
-        history = [{"quantity": 100}, {"quantity": 110}, {"quantity": 105}]
+        return {
+            "destination_id": destination_id,
+            "product_id": product_id,
+            "horizon": horizon,
+            "model": "baseline",
+            "forecast": [],
+            "history_used": [],
+            "fallback": True,
+            "reason": "insufficient_history",
+        }
+
+    # Datasets arrive newest first; the moving average expects oldest -> newest.
+    history.reverse()
 
     try:
         forecast = baseline_forecast(history, horizon=horizon)
@@ -54,4 +61,6 @@ def get_forecast(
         "model": "baseline",
         "forecast": forecast,
         "history_used": history,
+        "fallback": False,
+        "reason": None,
     }

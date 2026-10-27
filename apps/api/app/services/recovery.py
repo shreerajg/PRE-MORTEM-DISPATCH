@@ -73,7 +73,7 @@ def recover_allocation(
 
     Levers actually applied (each is a real change to the optimisation, not a label):
       1. Contingency lanes (``route.backup``) are activated at their premium cost.
-      2. Demand is re-ordered by destination priority then deadline urgency, so scarce
+      2. Demand is re-ordered by destination priority (then quantity), so scarce
          capacity protects the most critical destinations first.
 
     If the network genuinely cannot cover demand, the residual unmet rows are returned
