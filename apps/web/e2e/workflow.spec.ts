@@ -60,6 +60,22 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     expect(csv).toContain('RT-03'); // baseline used the lane that we later closed
   });
 
+  test('deadline constraint is opt-in and shown on the plan', async ({ page }) => {
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/planner');
+    const toggle = page.getByRole('checkbox', { name: /enforce destination deadlines/i });
+    await expect(toggle).toBeVisible();
+    await expect(toggle).not.toBeChecked();
+
+    await toggle.check();
+    await page.getByRole('button', { name: /generate baseline/i }).click();
+    await expect(page.getByText(/Baseline plan created/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Deadlines: enforced')).toBeVisible();
+  });
+
   test('empty states explain what to do next', async ({ page }) => {
     // Pin the scenario list to empty so the assertion cannot race a seeded backend.
     await page.route('**/api/v1/scenarios/?limit=*', (route) =>

@@ -7,7 +7,9 @@ export type HealthResponse = {
   status: string;
   version: string;
   solver: string;
+  solver_available?: boolean;
   db: string;
+  db_error?: string;
 };
 
 export type ValidationIssue = {
@@ -229,22 +231,82 @@ export type ForecastResponse = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const REQUEST_TIMEOUT_MS = 20_000;
+
+/** API failures keep their status, machine code and server request id. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly requestId?: string;
+
+  constructor(message: string, opts: { status: number; code?: string; requestId?: string }) {
+    const reference = opts.requestId ? ` (ref ${opts.requestId})` : '';
+    super(`${message}${reference}`);
+    this.name = 'ApiError';
+    this.status = opts.status;
+    this.code = opts.code;
+    this.requestId = opts.requestId;
+  }
+}
+
+async function fetchWithTimeout(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url(path), { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(
+        `The API did not respond within ${Math.round(timeoutMs / 1000)} seconds. Check that the server is running.`,
+        { status: 0, code: 'timeout' },
+      );
+    }
+    throw new ApiError('Cannot reach the API. Check your connection and that the server is running.', {
+      status: 0,
+      code: 'network_error',
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`;
+    let message = `${res.status} ${res.statusText}`;
+    let code: string | undefined;
+    let requestId = res.headers.get('X-Request-ID') ?? undefined;
+    const text = await res.text();
     try {
-      const j = await res.json();
-      detail = j.detail ?? j.message ?? JSON.stringify(j);
+      const body = JSON.parse(text) as {
+        detail?: string;
+        message?: string;
+        code?: string;
+        request_id?: string;
+      };
+      message = body.detail ?? body.message ?? message;
+      if (typeof body.code === 'string') code = body.code;
+      if (typeof body.request_id === 'string') requestId = body.request_id;
     } catch {
-      try {
-        detail = await res.text();
-      } catch {
-        /* ignore */
-      }
+      if (text) message = text;
     }
-    throw new Error(detail);
+    throw new ApiError(message, { status: res.status, code, requestId });
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<T> {
+  const res = await fetchWithTimeout(path, init, timeoutMs);
+  return handle<T>(res);
 }
 
 function url(path: string) {
@@ -255,41 +317,36 @@ function url(path: string) {
 // API
 // ---------------------------------------------------------------------------
 export async function health(): Promise<HealthResponse> {
-  const res = await fetch(url('/api/v1/health'));
-  return handle<HealthResponse>(res);
+  return request<HealthResponse>('/api/v1/health');
 }
 
 export async function listDatasets(): Promise<ListDatasetsResponse> {
-  const res = await fetch(url('/api/v1/datasets/'));
-  return handle<ListDatasetsResponse>(res);
+  return request<ListDatasetsResponse>('/api/v1/datasets/');
 }
 
 export async function importDataset(formData: FormData): Promise<ImportDatasetResponse> {
-  const res = await fetch(url('/api/v1/datasets/import'), {
+  return request<ImportDatasetResponse>('/api/v1/datasets/import', {
     method: 'POST',
     body: formData,
   });
-  return handle<ImportDatasetResponse>(res);
 }
 
 export async function loadSampleDataset(): Promise<ImportDatasetResponse & { name: string }> {
-  const res = await fetch(url('/api/v1/datasets/sample'), { method: 'POST' });
-  return handle<ImportDatasetResponse & { name: string }>(res);
+  return request<ImportDatasetResponse & { name: string }>('/api/v1/datasets/sample', {
+    method: 'POST',
+  });
 }
 
 export async function listScenarios(limit = 25): Promise<{ scenarios: ScenarioSummary[]; total: number }> {
-  const res = await fetch(url(`/api/v1/scenarios/?limit=${limit}`));
-  return handle<{ scenarios: ScenarioSummary[]; total: number }>(res);
+  return request<{ scenarios: ScenarioSummary[]; total: number }>(`/api/v1/scenarios/?limit=${limit}`);
 }
 
 export async function listPlans(limit = 25): Promise<{ plans: PlanSummary[]; total: number }> {
-  const res = await fetch(url(`/api/v1/plans/?limit=${limit}`));
-  return handle<{ plans: PlanSummary[]; total: number }>(res);
+  return request<{ plans: PlanSummary[]; total: number }>(`/api/v1/plans/?limit=${limit}`);
 }
 
 export async function getDataset(id: string): Promise<Dataset> {
-  const res = await fetch(url(`/api/v1/datasets/${id}`));
-  return handle<Dataset>(res);
+  return request<Dataset>(`/api/v1/datasets/${id}`);
 }
 
 export async function createPlan(
@@ -302,51 +359,43 @@ export async function createPlan(
     respect_deadlines: respectDeadlines,
   };
   if (solver) body.solver = solver;
-  const res = await fetch(url('/api/v1/plans/'), {
+  return request<PlanResponse>('/api/v1/plans/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return handle<PlanResponse>(res);
 }
 
 export async function getPlan(id: string): Promise<PlanResponse> {
-  const res = await fetch(url(`/api/v1/plans/${id}`));
-  return handle<PlanResponse>(res);
+  return request<PlanResponse>(`/api/v1/plans/${id}`);
 }
 
 export async function createScenario(
   baselinePlanId: string,
   disruption: DisruptionRequest,
 ): Promise<ScenarioCreateResponse> {
-  const res = await fetch(url('/api/v1/scenarios/'), {
+  return request<ScenarioCreateResponse>('/api/v1/scenarios/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ baseline_plan_id: baselinePlanId, disruption }),
   });
-  return handle<ScenarioCreateResponse>(res);
 }
 
 export async function getScenario(id: string): Promise<ScenarioDetail> {
-  const res = await fetch(url(`/api/v1/scenarios/${id}`));
-  return handle<ScenarioDetail>(res);
+  return request<ScenarioDetail>(`/api/v1/scenarios/${id}`);
 }
 
 export async function recoverScenario(id: string): Promise<RecoverResponse> {
-  const res = await fetch(url(`/api/v1/scenarios/${id}/recover`), {
-    method: 'POST',
-  });
-  return handle<RecoverResponse>(res);
+  return request<RecoverResponse>(`/api/v1/scenarios/${id}/recover`, { method: 'POST' });
 }
 
 export async function compareScenario(id: string): Promise<CompareResponse> {
-  const res = await fetch(url(`/api/v1/scenarios/${id}/compare`));
-  return handle<CompareResponse>(res);
+  return request<CompareResponse>(`/api/v1/scenarios/${id}/compare`);
 }
 
 export async function exportScenario(id: string): Promise<Blob> {
   // Try server-side export first
-  const res = await fetch(url(`/api/v1/scenarios/${id}/export`));
+  const res = await fetchWithTimeout(`/api/v1/scenarios/${id}/export`);
   if (res.ok) return await res.blob();
   // Fallback: generate CSV client-side from compare endpoint
   const cmp = await compareScenario(id);
@@ -381,6 +430,5 @@ export async function forecast(params: {
     product_id: params.product_id,
     horizon: String(params.horizon ?? 4),
   });
-  const res = await fetch(url(`/api/v1/forecast?${q.toString()}`));
-  return handle<ForecastResponse>(res);
+  return request<ForecastResponse>(`/api/v1/forecast?${q.toString()}`);
 }

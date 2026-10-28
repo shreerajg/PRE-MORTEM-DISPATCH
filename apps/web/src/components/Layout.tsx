@@ -26,7 +26,7 @@ const nav = [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { data: h } = useQuery({
+  const { data: h, isError: healthError } = useQuery({
     queryKey: ['health'],
     queryFn: health,
     refetchInterval: 15000,
@@ -38,7 +38,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return location.pathname === to || location.pathname.startsWith(to + '/');
   };
 
-  const healthOk = h?.status === 'ok' && h?.db === 'ok';
+  // Three honest states: healthy, degraded (API answered but something is
+  // wrong, e.g. the database), or unreachable (no answer at all).
+  const healthState: 'ok' | 'degraded' | 'unreachable' | 'checking' = healthError
+    ? 'unreachable'
+    : !h
+      ? 'checking'
+      : h.status === 'ok' && h.db === 'ok'
+        ? 'ok'
+        : 'degraded';
+
+  const healthTone = {
+    ok: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+    degraded: 'bg-amber-50 border-amber-200 text-amber-700',
+    unreachable: 'bg-red-50 border-red-200 text-red-700',
+    checking: 'bg-slate-50 border-slate-200 text-slate-500',
+  }[healthState];
+
+  const healthDot = {
+    ok: 'bg-emerald-500',
+    degraded: 'bg-amber-500',
+    unreachable: 'bg-red-500',
+    checking: 'bg-slate-300',
+  }[healthState];
+
+  const healthLabel = {
+    ok: 'API healthy',
+    degraded: 'API degraded',
+    unreachable: 'API unreachable',
+    checking: 'Checking…',
+  }[healthState];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -60,14 +89,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <div
+              role="status"
+              aria-live="polite"
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
-                healthOk ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700',
+                healthTone,
               )}
-              title={h ? JSON.stringify(h) : 'checking...'}
+              title={
+                h
+                  ? JSON.stringify(h)
+                  : healthError
+                    ? 'No response from the API'
+                    : 'checking…'
+              }
             >
-              <span className={cn('h-2 w-2 rounded-full', healthOk ? 'bg-emerald-500' : 'bg-amber-500')} />
-              {healthOk ? 'API healthy' : h ? 'API degraded' : 'Checking...'}
+              <span className={cn('h-2 w-2 rounded-full', healthDot)} />
+              {healthLabel}
               {h?.solver ? ` · ${h.solver}` : ''}
             </div>
             <div className="hidden items-center gap-1 text-xs text-slate-500 md:flex">
