@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import math
 from typing import Any, Dict, List
 
 try:
@@ -202,7 +203,8 @@ def validate_dataset(
             v = w.get(coord)
             if v is not None and not _is_missing(v):
                 try:
-                    float(v)
+                    if not math.isfinite(float(v)):
+                        raise ValueError("not finite")
                 except Exception:
                     add_issue(f"Warehouse row {idx}: invalid {coord} '{v}'", severity="error", field=coord, row=idx)
 
@@ -214,7 +216,9 @@ def validate_dataset(
         if p.get("weight_kg") is not None and not _is_missing(p.get("weight_kg")):
             try:
                 wv = float(p["weight_kg"])
-                if wv < 0:
+                if not math.isfinite(wv):
+                    add_issue(f"Product row {idx}: weight_kg is not a finite number", severity="error", field="weight_kg", row=idx)
+                elif wv < 0:
                     add_issue(f"Product row {idx}: weight_kg negative {wv}", severity="error", field="weight_kg", row=idx)
             except Exception:
                 add_issue(f"Product row {idx}: invalid weight_kg '{p.get('weight_kg')}'", severity="error", field="weight_kg", row=idx)
@@ -259,7 +263,9 @@ def validate_dataset(
             if not _is_missing(v):
                 try:
                     fv = float(v)
-                    if fv < 0:
+                    if not math.isfinite(fv):
+                        add_issue(f"Route row {idx}: {field} is not a finite number", severity="error", field=field, row=idx)
+                    elif fv < 0:
                         add_issue(f"Route row {idx}: {field} negative {fv}", severity="error", field=field, row=idx)
                 except Exception:
                     add_issue(f"Route row {idx}: invalid {field} '{v}'", severity="error", field=field, row=idx)
@@ -297,7 +303,9 @@ def validate_dataset(
         if not _is_missing(q):
             try:
                 fq = float(q)
-                if fq < 0:
+                if not math.isfinite(fq):
+                    add_issue(f"Inventory row {idx}: quantity is not a finite number", severity="error", field="quantity", row=idx)
+                elif fq < 0:
                     add_issue(f"Inventory row {idx}: quantity negative {fq}", severity="error", field="quantity", row=idx)
             except Exception:
                 add_issue(f"Inventory row {idx}: invalid quantity '{q}'", severity="error", field="quantity", row=idx)
@@ -315,7 +323,9 @@ def validate_dataset(
         if not _is_missing(q):
             try:
                 fq = float(q)
-                if fq < 0:
+                if not math.isfinite(fq):
+                    add_issue(f"Demand row {idx}: quantity is not a finite number", severity="error", field="quantity", row=idx)
+                elif fq < 0:
                     add_issue(f"Demand row {idx}: quantity negative {fq}", severity="error", field="quantity", row=idx)
             except Exception:
                 add_issue(f"Demand row {idx}: invalid quantity '{q}'", severity="error", field="quantity", row=idx)

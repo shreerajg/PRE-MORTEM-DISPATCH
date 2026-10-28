@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# SQLite allows one writer at a time. Without a busy timeout a second writer
+# fails instantly with "database is locked"; with WAL, readers never block the
+# writer. 5 s is long enough for the short writes this app performs.
+_SQLITE_BUSY_TIMEOUT_MS = 5000
 
 
 # ---------------------------------------------------------------------------
@@ -36,9 +44,34 @@ def _connect() -> sqlite3.Connection:
     parent = os.path.dirname(os.path.abspath(db_path))
     if parent:
         os.makedirs(parent, exist_ok=True)
-    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn = sqlite3.connect(
+        db_path,
+        timeout=_SQLITE_BUSY_TIMEOUT_MS / 1000.0,
+        check_same_thread=False,
+    )
     conn.row_factory = sqlite3.Row
+    # WAL lets readers proceed while a write is committed; busy_timeout makes a
+    # competing writer wait instead of raising sqlite3.OperationalError.
+    conn.execute(f"PRAGMA busy_timeout = {_SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+    except sqlite3.DatabaseError:
+        # Read-only or network filesystems may refuse WAL; the connection still works.
+        logger.warning("Could not enable WAL journal mode; continuing without it", exc_info=True)
     return conn
+
+
+def _json_load(raw: Any, default: Any) -> Any:
+    """Decode a stored JSON column without turning one corrupt row into a 500."""
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        logger.warning("Corrupt JSON payload in database; returning default", exc_info=True)
+        return default
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +110,15 @@ def init_db() -> None:
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+
+            -- List and history queries sort/filter on these columns; without
+            -- indexes every page load scans the whole table.
+            CREATE INDEX IF NOT EXISTS idx_datasets_created ON datasets(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_plans_created ON plans(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_plans_type_created ON plans(type, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_plans_dataset ON plans(dataset_id);
+            CREATE INDEX IF NOT EXISTS idx_scenarios_created ON scenarios(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_scenarios_baseline ON scenarios(baseline_plan_id);
             """
         )
         conn.commit()
@@ -111,7 +153,7 @@ def get_dataset(dataset_id: str) -> Optional[Dict[str, Any]]:
             "id": row["id"],
             "name": row["name"],
             "created_at": row["created_at"],
-            "meta": json.loads(row["meta"]) if row["meta"] else {},
+            "meta": _json_load(row["meta"], {}),
         }
     finally:
         conn.close()
@@ -128,7 +170,7 @@ def list_datasets() -> List[Dict[str, Any]]:
                     "id": row["id"],
                     "name": row["name"],
                     "created_at": row["created_at"],
-                    "meta": json.loads(row["meta"]) if row["meta"] else {},
+                    "meta": _json_load(row["meta"], {}),
                 }
             )
         return result
@@ -174,29 +216,30 @@ def get_plan(plan_id: str) -> Optional[Dict[str, Any]]:
             "status": row["status"],
             "solver": row["solver"],
             "created_at": row["created_at"],
-            "data": json.loads(row["data"]) if row["data"] else {},
+            "data": _json_load(row["data"], {}),
         }
     finally:
         conn.close()
 
 
-def list_plans(limit: int = 25, plan_type: Optional[str] = None) -> List[Dict[str, Any]]:
+def list_plans(limit: int = 25, plan_type: Optional[str] = None, offset: int = 0) -> List[Dict[str, Any]]:
     """Recent plan summaries, newest first. Filtering happens before LIMIT."""
     limit = max(1, min(limit, 100))
+    offset = max(0, offset)
     query = "SELECT id, dataset_id, type, status, solver, created_at, data FROM plans"
     params: List[Any] = []
     if plan_type:
         query += " WHERE type = ?"
         params.append(plan_type)
-    query += " ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
+    query += " ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
 
     conn = _connect()
     try:
         cur = conn.execute(query, params)
         result: List[Dict[str, Any]] = []
         for row in cur.fetchall():
-            data = json.loads(row["data"]) if row["data"] else {}
+            data = _json_load(row["data"], {})
             result.append(
                 {
                     "id": row["id"],
@@ -260,7 +303,7 @@ def get_scenario(scenario_id: str) -> Optional[Dict[str, Any]]:
         return {
             "id": row["id"],
             "baseline_plan_id": row["baseline_plan_id"],
-            "disruption": json.loads(row["disruption"]) if row["disruption"] else {},
+            "disruption": _json_load(row["disruption"], {}),
             "disrupted_plan_id": row["disrupted_plan_id"],
             "recovered_plan_id": row["recovered_plan_id"],
             "status": row["status"],
@@ -270,17 +313,22 @@ def get_scenario(scenario_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def list_scenarios() -> List[Dict[str, Any]]:
+def list_scenarios(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
     conn = _connect()
     try:
-        cur = conn.execute("SELECT * FROM scenarios ORDER BY created_at DESC")
+        cur = conn.execute(
+            "SELECT * FROM scenarios ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
         result: List[Dict[str, Any]] = []
         for row in cur.fetchall():
             result.append(
                 {
                     "id": row["id"],
                     "baseline_plan_id": row["baseline_plan_id"],
-                    "disruption": json.loads(row["disruption"]) if row["disruption"] else {},
+                    "disruption": _json_load(row["disruption"], {}),
                     "disrupted_plan_id": row["disrupted_plan_id"],
                     "recovered_plan_id": row["recovered_plan_id"],
                     "status": row["status"],
@@ -320,3 +368,31 @@ def update_scenario(scenario_id: str, fields: Dict[str, Any]) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Counts (list responses report the real total, not just the page size)
+# ---------------------------------------------------------------------------
+
+def _count(table: str, where: str = "", params: List[Any] | None = None) -> int:
+    conn = _connect()
+    try:
+        cur = conn.execute(f"SELECT COUNT(*) AS n FROM {table}{where}", params or [])
+        row = cur.fetchone()
+        return int(row["n"]) if row else 0
+    finally:
+        conn.close()
+
+
+def count_datasets() -> int:
+    return _count("datasets")
+
+
+def count_plans(plan_type: Optional[str] = None) -> int:
+    if plan_type:
+        return _count("plans", " WHERE type = ?", [plan_type])
+    return _count("plans")
+
+
+def count_scenarios() -> int:
+    return _count("scenarios")

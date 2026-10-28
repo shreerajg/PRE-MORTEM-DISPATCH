@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +87,39 @@ def _preview(records: List[Dict[str, Any]], n: int = 5) -> List[Dict[str, Any]]:
     return records[:n]
 
 
+def _check_upload(name: str, upload: UploadFile) -> None:
+    """Reject empty, oversized or non-CSV uploads before parsing them.
+
+    ``UploadFile.size`` is normally filled by Starlette's multipart parser. If it
+    is missing, measure the spooled file so the byte limit still applies.
+    """
+    filename = (upload.filename or "").lower()
+    if filename and not filename.endswith(".csv"):
+        raise HTTPException(
+            status_code=400, detail=f"{name} must be a .csv file (got '{upload.filename}')"
+        )
+
+    size = getattr(upload, "size", None)
+    if size is None:
+        try:
+            upload.file.seek(0, os.SEEK_END)
+            size = upload.file.tell()
+            upload.file.seek(0)
+        except OSError:
+            size = None
+
+    if size == 0:
+        raise HTTPException(status_code=400, detail=f"{name}.csv is empty")
+    if size is not None and size > settings.max_upload_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"{name}.csv is {size} bytes; the limit is "
+                f"{settings.max_upload_bytes} bytes per file."
+            ),
+        )
+
+
 @router.post("/import")
 async def import_dataset(
     warehouses: UploadFile = File(...),
@@ -103,20 +137,9 @@ async def import_dataset(
         "inventory": inventory,
         "demand": demand,
     }
-    # Enforce a size limit before parsing anything
+    # Enforce extension, emptiness and size limits before parsing anything
     for name, upload in uploads.items():
-        size = getattr(upload, "size", None)
-        if size is not None and size > settings.max_upload_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=(
-                    f"{name}.csv is {size} bytes; the limit is "
-                    f"{settings.max_upload_bytes} bytes per file."
-                ),
-            )
-        filename = (upload.filename or "").lower()
-        if filename and not filename.endswith(".csv"):
-            raise HTTPException(status_code=400, detail=f"{name} must be a .csv file (got '{upload.filename}')")
+        _check_upload(name, upload)
 
     # Read each CSV
     try:
@@ -169,7 +192,7 @@ def load_sample_dataset():
 def list_datasets():
     try:
         datasets = db.list_datasets()
-        return {"datasets": datasets}
+        return {"datasets": datasets, "total": db.count_datasets()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

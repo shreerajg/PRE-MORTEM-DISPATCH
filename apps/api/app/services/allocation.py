@@ -35,24 +35,25 @@ def _try_ortools(
     priority_map: Dict[Tuple[str, str], int],
     allow_backup: bool = False,
     solver_name: str | None = None,
-) -> AllocationResult | None:
+) -> tuple[AllocationResult | None, str | None]:
     """
     Attempt to solve with OR-Tools linear solver minimizing cost + penalty*unmet_priority_weighted.
-    Returns None if OR-Tools not available or solver fails to indicate fallback to greedy.
+    Returns (result, None) on success, or (None, reason) so the caller can report
+    exactly why the greedy engine was used instead of guessing.
     """
     active_solver = solver_name or settings.solver
     if active_solver not in ("ortools", "auto"):
-        return None
+        return None, None
     try:
         from ortools.linear_solver import pywraplp
     except ImportError:
-        return None
+        return None, "ortools_not_installed"
 
     start = time.perf_counter()
     try:
         solver = pywraplp.Solver.CreateSolver("GLOP")
         if solver is None:
-            return None
+            return None, "solver_unavailable"
 
         # Build indices
         demands = input_data.demand
@@ -154,7 +155,8 @@ def _try_ortools(
         elapsed = time.perf_counter() - start
 
         if status not in (pywraplp.Solver.OPTIMAL, pywraplp.Solver.FEASIBLE):
-            return None
+            reason = "infeasible" if status == pywraplp.Solver.INFEASIBLE else f"solver_status_{status}"
+            return None, reason
 
         allocations: List[AllocationItem] = []
         route_used: Dict[str, float] = {}
@@ -209,7 +211,7 @@ def _try_ortools(
         used_route_cap = sum(route_used.values())
         route_util = (used_route_cap / total_route_cap) if total_route_cap > 0 else 0.0
 
-        solver_name = "ortools"
+        solver_used = "ortools"
         solver_status = "optimal" if status == pywraplp.Solver.OPTIMAL else "feasible"
 
         return AllocationResult(
@@ -226,12 +228,12 @@ def _try_ortools(
                 "total_route_capacity": round(total_route_cap, 4),
             },
             status=solver_status,
-            solver=solver_name,
-            diagnostics={"elapsed_seconds": round(elapsed, 4), "solver": solver_name, "fallback": False},
+            solver=solver_used,
+            diagnostics={"elapsed_seconds": round(elapsed, 4), "solver": solver_used, "fallback": False},
             violations=[],
-        )
-    except Exception:
-        return None
+        ), None
+    except Exception as exc:  # noqa: BLE001 - fall back, but say why
+        return None, f"{type(exc).__name__}: {str(exc)[:240]}"
 
 
 def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str], int], allow_backup: bool = False) -> AllocationResult:
@@ -312,8 +314,9 @@ def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str
                 continue
             candidates.append(r)
 
-        # sort candidates by cost_per_unit ascending
-        candidates.sort(key=lambda r: float(r.cost_per_unit))
+        # sort candidates by cost, then route id so equal-cost lanes are chosen
+        # deterministically regardless of the order rows arrived in
+        candidates.sort(key=lambda r: (float(r.cost_per_unit), str(r.id)))
 
         for r in candidates:
             if remaining_demand <= 1e-9:
@@ -422,7 +425,7 @@ def solve_allocation(
         priority_map[key] = 3
 
     # Try OR-Tools first if enabled
-    ort_result = _try_ortools(
+    ort_result, ort_reason = _try_ortools(
         input, priority_map, allow_backup=allow_backup, solver_name=active_solver
     )
     if ort_result is not None:
@@ -436,4 +439,6 @@ def solve_allocation(
     if active_solver in ("ortools", "auto"):
         greedy.diagnostics["ortools_attempted"] = True
         greedy.diagnostics["fallback"] = "greedy"
+        if ort_reason:
+            greedy.diagnostics["fallback_reason"] = ort_reason
     return greedy

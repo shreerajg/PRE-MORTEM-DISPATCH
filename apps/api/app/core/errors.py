@@ -14,9 +14,14 @@ _STATUS_CODES = {
     403: "forbidden",
     404: "not_found",
     409: "conflict",
+    413: "payload_too_large",
     422: "validation_error",
     429: "rate_limited",
 }
+
+
+def _request_id(request: Request) -> str | None:
+    return getattr(request.state, "request_id", None)
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
@@ -28,27 +33,37 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     }
     if not isinstance(exc.detail, str):
         content["errors"] = jsonable_encoder(exc.detail)
+    rid = _request_id(request)
+    if rid:
+        content["request_id"] = rid
     headers = getattr(exc, "headers", None)
     return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(
-        status_code=422,
-        content={
-            "detail": "Request validation failed",
-            "code": "validation_error",
-            "errors": jsonable_encoder(exc.errors()),
-        },
-    )
+    content = {
+        "detail": "Request validation failed",
+        "code": "validation_error",
+        "errors": jsonable_encoder(exc.errors()),
+    }
+    rid = _request_id(request)
+    if rid:
+        content["request_id"] = rid
+    return JSONResponse(status_code=422, content=content)
 
 
 async def generic_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error", "code": "internal_error"},
+    logger.exception(
+        "Unhandled error on %s %s [%s]",
+        request.method,
+        request.url.path,
+        _request_id(request),
     )
+    content = {"detail": "Internal server error", "code": "internal_error"}
+    rid = _request_id(request)
+    if rid:
+        content["request_id"] = rid
+    return JSONResponse(status_code=500, content=content)
 
 
 def error_response(message: str, code: str, status: int = 400, errors=None):

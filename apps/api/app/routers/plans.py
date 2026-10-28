@@ -85,13 +85,16 @@ def create_plan(body: PlanCreateRequest):
 
 
 @router.get("/")
-def list_plans(limit: int = 25, plan_type: Optional[str] = None):
+def list_plans(limit: int = 25, offset: int = 0, plan_type: Optional[str] = None):
     """Recent plans, newest first — powers plan pickers in the UI."""
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
     try:
-        plans = db.list_plans(limit=limit, plan_type=plan_type)
+        plans = db.list_plans(limit=limit, plan_type=plan_type, offset=offset)
+        total = db.count_plans(plan_type)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"plans": plans, "total": len(plans)}
+    return {"plans": plans, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/{plan_id}")

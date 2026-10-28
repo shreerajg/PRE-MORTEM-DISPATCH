@@ -8,6 +8,7 @@ normalise every field explicitly so callers can rely on a total function.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional
 
 from app.domain.schemas import Demand, Inventory, Route
@@ -35,18 +36,21 @@ def as_float(value: Any, default: float = 0.0) -> float:
     if value is None or value == "":
         return default
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return default
+    # NaN/inf would poison every sum and comparison downstream.
+    return number if math.isfinite(number) else default
 
 
 def as_optional_float(value: Any) -> Optional[float]:
     if value is None or str(value).strip() == "":
         return None
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return None
+    return number if math.isfinite(number) else None
 
 
 def as_product_ids(value: Any) -> Optional[List[str]]:

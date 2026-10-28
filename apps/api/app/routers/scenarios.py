@@ -56,14 +56,21 @@ def _scenario_summary(scen: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/")
-def list_scenarios(limit: int = 25):
+def list_scenarios(limit: int = 25, offset: int = 0):
     """Recent scenarios, newest first — powers the dashboard and scenario pickers."""
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
     try:
-        scenarios = db.list_scenarios()
+        scenarios = db.list_scenarios(limit=limit, offset=offset)
+        total = db.count_scenarios()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    limit = max(1, min(limit, 100))
-    return {"scenarios": [_scenario_summary(s) for s in scenarios[:limit]], "total": len(scenarios)}
+    return {
+        "scenarios": [_scenario_summary(s) for s in scenarios],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.post("/")
