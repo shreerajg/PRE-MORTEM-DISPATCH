@@ -30,6 +30,26 @@ def _resolve_priority(demand_item: Demand, priorities: Dict[str, int]) -> int:
     return 3
 
 
+def _deadline_diagnostics(input_data: AllocationInput) -> Dict[str, Any]:
+    """Report exactly which lanes the hard deadline constraint removed."""
+    if not input_data.respect_deadlines:
+        return {}
+    excluded = set()
+    for route in input_data.routes:
+        deadline = input_data.deadlines.get(route.destination_id)
+        if deadline is not None and float(route.time_days) > float(deadline) + 1e-9:
+            excluded.add(str(route.id))
+    demand_destinations = {str(d.destination_id) for d in input_data.demand}
+    missing = sorted(
+        dest for dest in demand_destinations if dest not in input_data.deadlines
+    )
+    return {
+        "deadline_enforced": True,
+        "lanes_excluded_by_deadline": sorted(excluded),
+        "destinations_without_deadline": missing,
+    }
+
+
 def _try_ortools(
     input_data: AllocationInput,
     priority_map: Dict[Tuple[str, str], int],
@@ -89,6 +109,10 @@ def _try_ortools(
                     continue
                 if rt.destination_id != dem.destination_id:
                     continue
+                if input_data.respect_deadlines:
+                    deadline = input_data.deadlines.get(dem.destination_id)
+                    if deadline is not None and float(rt.time_days) > float(deadline) + 1e-9:
+                        continue
                 # need at least one warehouse with this product
                 # route's warehouse must have inventory for this product
                 if (rt.warehouse_id, dem.product_id) not in wh_product_set:
@@ -300,6 +324,11 @@ def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str
                 continue
             if r.destination_id != dem.destination_id:
                 continue
+            # Hard deadline mode: a lane that cannot arrive in time is not usable.
+            if input_data.respect_deadlines:
+                deadline = input_data.deadlines.get(dem.destination_id)
+                if deadline is not None and float(r.time_days) > float(deadline) + 1e-9:
+                    continue
             # product_ids filter
             if r.product_ids is not None and len(r.product_ids) > 0:
                 if dem.product_id not in r.product_ids:
@@ -429,6 +458,7 @@ def solve_allocation(
         input, priority_map, allow_backup=allow_backup, solver_name=active_solver
     )
     if ort_result is not None:
+        ort_result.diagnostics.update(_deadline_diagnostics(input))
         return ort_result
 
     # Fallback to greedy
@@ -441,4 +471,5 @@ def solve_allocation(
         greedy.diagnostics["fallback"] = "greedy"
         if ort_reason:
             greedy.diagnostics["fallback_reason"] = ort_reason
+    greedy.diagnostics.update(_deadline_diagnostics(input))
     return greedy

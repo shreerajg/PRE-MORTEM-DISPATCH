@@ -15,6 +15,7 @@ export default function Planner() {
   const qc = useQueryClient();
   const { datasetId, setDatasetId, planId, setPlanId, setBaselinePlan } = useAppStore();
   const [solver, setSolver] = React.useState<string>('');
+  const [respectDeadlines, setRespectDeadlines] = React.useState(false);
 
   const { data: datasets } = useQuery({ queryKey: ['datasets'], queryFn: listDatasets });
   const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: () => listPlans(25) });
@@ -44,7 +45,7 @@ export default function Planner() {
   });
 
   const createMut = useMutation({
-    mutationFn: () => createPlan(datasetId!, solver || undefined),
+    mutationFn: () => createPlan(datasetId!, solver || undefined, respectDeadlines),
     onSuccess: (res) => {
       setPlanId(res.id);
       setBaselinePlan(res);
@@ -81,7 +82,7 @@ export default function Planner() {
             <Calculator className="h-4 w-4" /> Generate baseline
           </CardTitle>
           <CardDescription>
-            Constraints enforced: warehouse inventory, route capacity, lane availability, product eligibility, destination priority.
+            Constraints enforced: warehouse inventory, route capacity, lane availability, product eligibility, destination priority — plus deadlines when enabled.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -118,6 +119,21 @@ export default function Planner() {
               </Button>
             </div>
           </div>
+
+          <label className="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-slate-900"
+              checked={respectDeadlines}
+              onChange={(e) => setRespectDeadlines(e.target.checked)}
+            />
+            <span>
+              <span className="block font-medium text-slate-700">Enforce destination deadlines</span>
+              <span className="block text-slate-500">
+                Only lanes that arrive by the destination deadline may be used. Off by default — deadlines are reported as a KPI.
+              </span>
+            </span>
+          </label>
 
           {createMut.isError ? (
             <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -189,6 +205,9 @@ export default function Planner() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={solverBadge}>{solverStatus ?? plan.status}</Badge>
             <Badge variant="outline">Solver: {plan.solver}</Badge>
+            <Badge variant="outline">
+              Deadlines: {plan.constraints?.respect_deadlines ? 'enforced' : 'KPI only'}
+            </Badge>
             <Badge variant="secondary">{plan.id.slice(0, 12)}…</Badge>
             <span className="text-xs text-slate-500">{new Date(plan.created_at).toLocaleString()}</span>
           </div>

@@ -93,6 +93,7 @@ export type PlanResponse = {
   kpis: KPISnapshot;
   diagnostics?: Record<string, unknown>;
   utilization?: Record<string, unknown>;
+  constraints?: { respect_deadlines?: boolean };
 };
 
 export type DisruptionRequest = {
@@ -291,11 +292,20 @@ export async function getDataset(id: string): Promise<Dataset> {
   return handle<Dataset>(res);
 }
 
-export async function createPlan(datasetId: string, solver?: string): Promise<PlanResponse> {
+export async function createPlan(
+  datasetId: string,
+  solver?: string,
+  respectDeadlines = false,
+): Promise<PlanResponse> {
+  const body: Record<string, unknown> = {
+    dataset_id: datasetId,
+    respect_deadlines: respectDeadlines,
+  };
+  if (solver) body.solver = solver;
   const res = await fetch(url('/api/v1/plans/'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(solver ? { dataset_id: datasetId, solver } : { dataset_id: datasetId }),
+    body: JSON.stringify(body),
   });
   return handle<PlanResponse>(res);
 }

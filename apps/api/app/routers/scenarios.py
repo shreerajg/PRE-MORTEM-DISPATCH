@@ -14,7 +14,7 @@ from app.repo import database as db
 from app.services.allocation import solve_allocation
 from app.services.disruption import apply_disruption
 from app.services.kpi import compute_delivery_risk, compute_kpis
-from app.services.normalize import build_network, load_destinations
+from app.services.normalize import build_network, load_deadlines, load_destinations
 from app.services.recovery import recover_allocation
 from app.services.reporting import export_scenario_csv
 
@@ -92,6 +92,13 @@ def create_scenario(body: ScenarioCreate):
     meta = ds.get("meta", {})
     inventory, demand, routes, priorities = _load_dataset_inventory_routes(meta)
 
+    # A scenario inherits the planning policy of the baseline it branches from:
+    # a deadline-enforced baseline must not be compared against a relaxed replan.
+    baseline_data = baseline_plan.get("data", {}) or {}
+    respect_deadlines = bool(
+        (baseline_data.get("constraints") or {}).get("respect_deadlines", False)
+    )
+
     # Validate disruption
     disruption = body.disruption
     # disruption is already a DisruptionRequest (pydantic)
@@ -103,11 +110,17 @@ def create_scenario(body: ScenarioCreate):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Disruption failed: {e}")
 
-    disrupted_input = AllocationInput(inventory=new_inventory, demand=demand, routes=new_routes, priorities=priorities)
+    disrupted_input = AllocationInput(
+        inventory=new_inventory,
+        demand=demand,
+        routes=new_routes,
+        priorities=priorities,
+        deadlines=load_deadlines(meta),
+        respect_deadlines=respect_deadlines,
+    )
     disrupted_result = solve_allocation(disrupted_input)
     disrupted_kpi = compute_kpis(disrupted_result, new_inventory, demand, new_routes)
 
-    baseline_data = baseline_plan.get("data", {})
     destinations = _load_destinations(meta)
     # Delivery risk (deadline vs transit time) — KPI signal, never blocks feasibility
     disrupted_delivery = compute_delivery_risk(disrupted_result.allocations, new_routes, destinations)
@@ -128,6 +141,7 @@ def create_scenario(body: ScenarioCreate):
         "violations": disrupted_result.violations,
         "disruption_description": description,
         "delivery_risk": disrupted_delivery,
+        "constraints": {"respect_deadlines": respect_deadlines},
     }
     try:
         db.save_plan(disrupted_plan_id, dataset_id, type="disrupted", status="completed", solver=disrupted_result.solver, created_at=created_at, data=disrupted_data)
@@ -202,6 +216,11 @@ def recover_scenario(scenario_id: str):
         raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
     meta = ds.get("meta", {})
     inventory, demand, routes, priorities = _load_dataset_inventory_routes(meta)
+    respect_deadlines = bool(
+        ((baseline_plan.get("data", {}) or {}).get("constraints") or {}).get(
+            "respect_deadlines", False
+        )
+    )
 
     # Re-apply disruption to get the same disrupted inputs (idempotent)
     disruption_dict = scen.get("disruption", {})
@@ -215,7 +234,14 @@ def recover_scenario(scenario_id: str):
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 
-    disrupted_input = AllocationInput(inventory=new_inventory, demand=demand, routes=new_routes, priorities=priorities)
+    disrupted_input = AllocationInput(
+        inventory=new_inventory,
+        demand=demand,
+        routes=new_routes,
+        priorities=priorities,
+        deadlines=load_deadlines(meta),
+        respect_deadlines=respect_deadlines,
+    )
 
     recovered_result = recover_allocation(
         disrupted_input,
@@ -239,6 +265,7 @@ def recover_scenario(scenario_id: str):
         "status_detail": recovered_result.status,
         "violations": recovered_result.violations,
         "delivery_risk": recovered_delivery,
+        "constraints": {"respect_deadlines": respect_deadlines},
     }
     try:
         db.save_plan(recovered_plan_id, dataset_id, type="recovered", status="completed", solver=recovered_result.solver, created_at=created_at, data=recovered_data)

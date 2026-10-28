@@ -147,6 +147,14 @@ class AllocationInput(BaseModel):
     demand: List[Demand] = Field(default_factory=list, description="Demand per destination/product")
     routes: List[Route] = Field(default_factory=list, description="Available routes")
     priorities: Dict[str, int] = Field(default_factory=dict, description="Destination id -> priority override (1-5)")
+    deadlines: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Destination id -> deadline in days; only read when respect_deadlines is true",
+    )
+    respect_deadlines: bool = Field(
+        default=False,
+        description="Hard constraint: a lane may only be used when its transit time meets the destination deadline",
+    )
     allow_partial: bool = Field(default=True, description="Whether partial fulfillment is allowed")
     penalty_unmet: float = Field(default=1000.0, ge=0, description="Penalty cost per unit of unmet demand")
 

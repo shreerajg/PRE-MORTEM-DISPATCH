@@ -148,3 +148,13 @@ def load_destinations(meta: Dict[str, Any]) -> List[Dict[str, Any]]:
             }
         )
     return out
+
+
+def load_deadlines(meta: Dict[str, Any]) -> Dict[str, float]:
+    """Destination id -> deadline in days, ignoring rows without a usable deadline."""
+    deadlines: Dict[str, float] = {}
+    for d in load_destinations(meta):
+        deadline = d.get("deadline_days")
+        if deadline is not None and float(deadline) >= 0:
+            deadlines[d["id"]] = float(deadline)
+    return deadlines

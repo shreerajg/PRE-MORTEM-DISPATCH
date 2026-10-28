@@ -11,7 +11,7 @@ from app.domain.schemas import AllocationInput
 from app.repo import database as db
 from app.services.allocation import solve_allocation
 from app.services.kpi import compute_delivery_risk, compute_kpis
-from app.services.normalize import build_network, load_destinations
+from app.services.normalize import build_network, load_deadlines, load_destinations
 
 router = APIRouter(prefix="/api/v1/plans", tags=["plans"])
 
@@ -21,11 +21,19 @@ _SOLVERS = ("greedy", "ortools", "auto")
 class PlanCreateRequest(BaseModel):
     dataset_id: str
     solver: Optional[str] = None
+    respect_deadlines: bool = False
 
 
-def _build_allocation_input(meta: Dict[str, Any]) -> AllocationInput:
+def _build_allocation_input(meta: Dict[str, Any], respect_deadlines: bool = False) -> AllocationInput:
     inventory, demand, routes, priorities = build_network(meta)
-    return AllocationInput(inventory=inventory, demand=demand, routes=routes, priorities=priorities)
+    return AllocationInput(
+        inventory=inventory,
+        demand=demand,
+        routes=routes,
+        priorities=priorities,
+        deadlines=load_deadlines(meta),
+        respect_deadlines=respect_deadlines,
+    )
 
 
 @router.post("/")
@@ -37,7 +45,7 @@ def create_plan(body: PlanCreateRequest):
         raise HTTPException(status_code=400, detail=f"Invalid solver '{body.solver}'; allowed {', '.join(_SOLVERS)}")
     meta = ds.get("meta", {})
 
-    allocation_input = _build_allocation_input(meta)
+    allocation_input = _build_allocation_input(meta, respect_deadlines=body.respect_deadlines)
     result = solve_allocation(allocation_input, solver=body.solver)
 
     # Compute KPIs
@@ -62,6 +70,7 @@ def create_plan(body: PlanCreateRequest):
         "status_detail": result.status,
         "violations": result.violations,
         "delivery_risk": delivery_risk,
+        "constraints": {"respect_deadlines": bool(body.respect_deadlines)},
     }
 
     try:
@@ -81,6 +90,7 @@ def create_plan(body: PlanCreateRequest):
         "unmet": data["unmet"],
         "kpis": data["kpis"],
         "diagnostics": data["diagnostics"],
+        "constraints": data["constraints"],
     }
 
 
@@ -119,4 +129,5 @@ def get_plan(plan_id: str):
         "diagnostics": data.get("diagnostics", {}),
         "utilization": data.get("utilization", {}),
         "delivery_risk": data.get("delivery_risk"),
+        "constraints": data.get("constraints", {}),
     }
