@@ -35,6 +35,12 @@ flowchart TB
 depend on `services` + `domain` and contain no allocation maths. The frontend depends only on
 the HTTP surface — it never imports backend code.
 
+**Operational boundaries.** SQLite runs in WAL mode with `busy_timeout=5000`, so a second
+writer waits for the lock instead of failing; reads never block the writer. Every request gets
+an id (`X-Request-ID`, echoed in errors) and a duration header, and is logged once. List
+endpoints return the true table count with `limit`/`offset`; the API never presents a page as
+the whole history.
+
 ## 2. Modules
 
 | Module | Owns | Must not do |
@@ -71,11 +77,11 @@ sequenceDiagram
   API-->>FE: dataset_id + report + preview
 
   U->>FE: Generate baseline
-  FE->>API: POST /plans {dataset_id}
-  API->>ALLOC: AllocationInput (backup lanes excluded)
+  FE->>API: POST /plans {dataset_id, respect_deadlines}
+  API->>ALLOC: AllocationInput (backup lanes excluded, deadlines optional)
   ALLOC-->>API: AllocationResult
   API->>KPI: compute_kpis + delivery risk
-  API->>DB: store plan
+  API->>DB: store plan + constraints
   API-->>FE: plan + KPIs
 
   U->>FE: Configure disruption
@@ -111,6 +117,11 @@ sequenceDiagram
    Verified by `test_plan_creation_is_reproducible`.
 5. **Honest infeasibility.** If demand cannot be covered, residual unmet rows are returned and
    explained. No synthetic success.
+6. **Policy inheritance.** A baseline plan stores `constraints.respect_deadlines`; scenarios and
+   recovery re-read it from the baseline. A deadline-enforced plan is never compared against a
+   relaxed replan. Verified by `test_plan_endpoint_enforces_and_scenarios_inherit_the_policy`.
+7. **Deterministic lane choice.** Equal-cost lanes are ordered by route id, so re-importing the
+   same data in a different row order cannot silently change which lane is used.
 
 ## 5. Recovery model
 

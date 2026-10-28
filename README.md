@@ -16,7 +16,7 @@ number computed, not narrated.
 | Step | Screen | What happens |
 |---|---|---|
 | 1 | **Datasets** | Load a bundled 4-warehouse / 8-destination network, or upload six CSVs. Schema, type, duplicate and referential checks run before anything is planned. |
-| 2 | **Planner** | Solves a constrained allocation: inventory, lane capacity, lane availability, product eligibility, destination priority. Shows every shipment, every gap, and the risk-score breakdown. |
+| 2 | **Planner** | Solves a constrained allocation: inventory, lane capacity, lane availability, product eligibility, destination priority — and, optionally, destination deadlines as a hard constraint. Shows every shipment, every gap, and the risk-score breakdown. |
 | 3 | **Disruption Lab** | Mutates *real planning inputs* — reduced stock, zeroed supply, a closed lane, or added transit days — then re-solves. Impact is the difference between two computed plans. |
 | 4 | **Recovery** | Re-plans using contingency lanes and priority ordering, and lists each concrete allocation change with its unit cost. |
 | 5 | **Compare** | Baseline / disrupted / recovered side by side, with server-computed deltas and a written trade-off. |
@@ -102,13 +102,13 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 40 passed
+python -m pytest apps/api/tests -q          # 53 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
 # Browser E2E (needs both servers running)
-cd apps/web && npx playwright test          # 6 passed
+cd apps/web && npx playwright test          # 7 passed
 ```
 
 The suite asserts invariants, not just "it returned 200":
@@ -121,8 +121,17 @@ The suite asserts invariants, not just "it returned 200":
 - recovery restores fulfilment **and** costs more
 - baseline is unchanged after a disruption is simulated against it
 - identical inputs reproduce identical allocations
+- equal-cost lanes are chosen deterministically, regardless of row order
+- hard deadline mode leaves late-only demand unmet; the default reports lateness as a KPI
+- scenarios inherit the baseline's deadline policy
+- concurrent SQLite writers wait for the lock instead of failing (WAL + busy timeout)
+- every response carries a request id, and errors repeat it in the body
 - exported CSV totals equal the computed plan totals
 - the landing page's headline numbers match the demo story, and it has no horizontal overflow at 390 px
+
+List endpoints report the true table count alongside `limit`/`offset`, so the UI never
+mistakes a page for the whole history. `GET /health` reports database reachability, the
+configured solver and whether OR-Tools is actually installed — not just a constant `ok`.
 
 ---
 
@@ -162,6 +171,11 @@ Full detail — data flow, invariants, objective function, risk formula — in
 - **Route delay** — raises `time_days` and therefore deadline exposure; it does **not** remove
   capacity, so fulfilment can stay at 100% while units arrive late. That is deliberate and stated
   in the UI.
+- **Deadline policy** — deadlines are a KPI by default. Setting `respect_deadlines: true` when
+  creating a plan turns them into a hard constraint: a lane may be used only when
+  `time_days <= deadline_days`, and demand with no compliant lane is reported as unmet. Scenarios
+  inherit the baseline's policy, so a deadline-enforced plan is never compared against a relaxed
+  replan.
 - **Feasibility ≠ optimality** — the greedy engine is feasible and priority-respecting, not
   proven optimal. Every plan displays its solver and status.
 
@@ -232,7 +246,7 @@ required. The console itself needs no account and continues to work either way.
 
 ## Roadmap without pretending
 
-- Deadline enforcement as a hard constraint (currently a KPI)
+- Weight/volume constraints on lanes (product `weight_kg` is already captured)
 - Trained demand forecasting once a real history exists, with backtested error
 - Postgres + concurrent scenarios behind the existing repository interface
-- Weight/volume constraints on lanes (product `weight_kg` is already captured)
+- Scenario rename/delete and retention controls

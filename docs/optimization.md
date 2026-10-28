@@ -21,6 +21,8 @@ null), and the origin warehouse holds stock of `p`.
 (4) Availability   x[r, p] = 0                                if r.available = false
 (5) Product rule   x[r, p] = 0                                if r.product_ids excludes p
 (6) No lane        x[r, p] = 0                                if no lane exists w → d
+(7) Deadline       x[r, p] = 0                                if respect_deadlines
+                                                             and time_days[r] > deadline[d]
 ```
 
 ## Objective
@@ -44,14 +46,27 @@ minimise  Σ_r Σ_p cost_per_unit[r] · x[r, p]
 |---|---|
 | `greedy` (default) | Deterministic heuristic, always available |
 | `ortools` | LP via OR-Tools `GLOP`, exact optimum for the formulation above |
-| `auto` | Tries OR-Tools, falls back to greedy on `ImportError` |
+| `auto` | Tries OR-Tools, falls back to greedy and records `fallback_reason` |
 
 **Greedy procedure.** Sort demand rows by `(priority asc, quantity desc)`. For each row, walk
-eligible lanes ordered by `cost_per_unit asc`, allocating
+eligible lanes ordered by `(cost_per_unit asc, route id asc)`, allocating
 `min(remaining demand, remaining inventory at origin, remaining lane capacity)`. Record any
 leftover as unmet. This is *feasible* and priority-respecting but is **not claimed optimal** —
-`diagnostics.solver` always states which engine ran, and `fallback` is set when OR-Tools was
-requested but unavailable.
+`diagnostics.solver` always states which engine ran, and `fallback` plus `fallback_reason`
+are set when OR-Tools was requested but unavailable (e.g. `ortools_not_installed`).
+
+## Deadline policy
+
+Deadlines are a KPI by default: `delivery_risk` reports units that arrive after
+`destination.deadline_days`, but feasibility is unchanged.
+
+`respect_deadlines = true` makes constraint (7) active. A lane whose `time_days` exceeds the
+destination deadline is removed from the candidate set, and demand with no compliant lane is
+reported as unmet. Destinations without a deadline remain unconstrained. Diagnostics list
+`lanes_excluded_by_deadline` and `destinations_without_deadline` so the exclusion is auditable.
+
+The policy is stored on the plan (`constraints.respect_deadlines`) and inherited by every
+scenario and recovery run branched from that baseline.
 
 ## Status semantics
 
@@ -82,13 +97,15 @@ the backup lane the shortfall is reported as residual, not papered over.
 ## Documented assumptions
 
 1. **Route delay does not change capacity.** It raises `time_days`, which feeds the delivery-risk
-   KPI (`transit_days > deadline_days`) but never makes a shipment infeasible. This is a stated
-   modelling choice; enforcing deadlines as hard constraints is a future extension.
+   KPI (`transit_days > deadline_days`) but only makes a shipment unusable when
+   `respect_deadlines` is enabled. This is a stated modelling choice: lateness is a KPI by
+   default and a hard constraint on request.
 2. **Split shipments are allowed** — one demand row may be served by several lanes.
 3. **Units are homogeneous per product.** No weight/volume packing constraints are modelled even
    though `weight_kg` exists on products.
 4. **Inventory is not shared across products** — no substitution.
-5. **Deterministic.** No randomness; identical inputs produce identical outputs.
+5. **Deterministic.** No randomness; identical inputs produce identical outputs. Equal-cost
+   lanes are tie-broken by route id.
 
 ## Risk score
 

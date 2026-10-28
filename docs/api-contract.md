@@ -1,10 +1,11 @@
 # API contract — `/api/v1`
 
 All endpoints return JSON except `/scenarios/{id}/export`, which returns CSV.
-Errors use a single envelope:
+Every response carries `X-Request-ID` (caller-supplied values are preserved) and
+`X-Process-Time-Ms`. Errors use a single envelope that repeats the id:
 
 ```json
-{ "detail": "human readable message", "code": "machine_code", "errors": [] }
+{ "detail": "human readable message", "code": "machine_code", "errors": [], "request_id": "a1b2c3d4e5f6" }
 ```
 
 | Status | Meaning in this API |
@@ -43,7 +44,8 @@ No body. Idempotent per call (each call creates a new dataset id).
 
 ### `GET /datasets/`
 ```json
-{ "datasets": [ { "id": "...", "name": "...", "created_at": "...", "meta": { "...": "raw rows" } } ] }
+{ "datasets": [ { "id": "...", "name": "...", "created_at": "...", "meta": { "...": "raw rows" } } ],
+  "total": 3 }
 ```
 
 ### `GET /datasets/{id}`
@@ -62,10 +64,13 @@ reports `feasible` because it does not prove optimality.
 
 ### `POST /plans`
 ```json
-{ "dataset_id": "uuid", "solver": "greedy" }
+{ "dataset_id": "uuid", "solver": "greedy", "respect_deadlines": false }
 ```
 `solver` is optional (`greedy | ortools | auto`). Defaults to server config and
-applies to this request only.
+applies to this request only. `respect_deadlines` is optional and defaults to
+`false`: when true, a lane is eligible only if `time_days <= deadline_days` for
+that destination. Destinations without a deadline stay unconstrained, and demand
+with no compliant lane is returned as unmet.
 
 Response:
 ```json
@@ -83,17 +88,26 @@ Response:
                                 "at_risk_component": 0, "cost_component": 5.6,
                                 "description": "risk_score = ..." } },
   "diagnostics": { "elapsed_seconds": 0.002, "solver": "greedy" },
-  "utilization": { "wh_utilization": 0.71, "route_utilization": 0.55 }
+  "utilization": { "wh_utilization": 0.71, "route_utilization": 0.55 },
+  "constraints": { "respect_deadlines": false }
 }
 ```
 
+When deadline enforcement is on, `diagnostics` also contains
+`deadline_enforced: true`, `lanes_excluded_by_deadline: ["RT-09", ...]` and
+`destinations_without_deadline: [...]`. When OR-Tools was requested but not
+used, `diagnostics.fallback` is `"greedy"` and `fallback_reason` names the cause
+(e.g. `ortools_not_installed`).
+
 ### `GET /plans/`
-`?limit=25&plan_type=baseline` → `{ "plans": [{ "id", "type", "solver_status", "kpis", "allocation_count", ... }], "total": n }`.
-The type filter is applied before `limit`, so `limit=1&plan_type=baseline` is never
+`?limit=25&offset=0&plan_type=baseline` →
+`{ "plans": [{ "id", "type", "solver_status", "kpis", "allocation_count", ... }], "total": n, "limit": n, "offset": n }`.
+`total` is the true table count (after the type filter), not the page size. The type
+filter is applied before `limit`, so `limit=1&plan_type=baseline` is never
 emptied by newer plans of another type.
 
 ### `GET /plans/{id}`
-Same shape as the create response, including `solver_status`.
+Same shape as the create response, including `solver_status` and `constraints`.
 
 ---
 
@@ -134,10 +148,13 @@ Response:
 
 Errors: `400` for unknown type or missing/invalid params, `404` for unknown baseline plan.
 The referenced plan must have `type: "baseline"`; pointing at a disrupted or recovered
-plan is a `400`.
+plan is a `400`. A scenario inherits the baseline's `constraints.respect_deadlines`:
+the disrupted and recovered plans are written with the same policy so the comparison
+stays apples-to-apples.
 
 ### `GET /scenarios/`
-`?limit=25` → recent scenarios with `kpis.{baseline,disrupted,recovered}`.
+`?limit=25&offset=0` → `{ "scenarios": [...], "total": n, "limit": n, "offset": n }` with
+`kpis.{baseline,disrupted,recovered}`. `total` is the true table count, not the page size.
 
 ### `GET /scenarios/{id}`
 `{ "scenario": {...}, "baseline_plan": {...}, "disrupted_plan": {...}, "recovered_plan": {...}|null }`
@@ -188,8 +205,12 @@ recomputed at export time.
 
 ### `GET /health`
 ```json
-{ "status": "ok", "version": "1.0.0", "solver": "greedy", "db": "ok" }
+{ "status": "ok", "version": "1.0.0", "solver": "greedy",
+  "solver_available": false, "db": "ok" }
 ```
+`status` becomes `degraded` and `db` becomes `error` when the database probe fails
+(`db_error` carries a short reason). `solver_available` reports whether OR-Tools can
+actually be imported, independent of which solver is configured.
 
 ### `GET /forecast?destination_id=&product_id=&horizon=`
 Baseline moving-average forecast (window 3) with widened p10/p90 band, computed only
