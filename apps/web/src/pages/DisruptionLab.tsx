@@ -8,7 +8,8 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { createScenario, getDataset, listPlans, type DisruptionRequest, type ImpactSummary, type PlanResponse } from '../lib/api';
+import { CauseBadge } from '../components/CauseBadge';
+import { createScenario, getDataset, listPlans, type DisruptionRequest, type ImpactSummary, type PlanResponse, type UnmetDiagnosis } from '../lib/api';
 import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
@@ -114,6 +115,14 @@ export default function DisruptionLab() {
 
   const disrupted: PlanResponse | undefined = createMut.data?.disrupted_plan;
   const impact: ImpactSummary | undefined = createMut.data?.impact;
+
+  const diagnosisByRow = React.useMemo(() => {
+    const map = new Map<string, UnmetDiagnosis>();
+    for (const diagnosis of disrupted?.unmet_diagnosis ?? []) {
+      map.set(`${diagnosis.destination_id}|${diagnosis.product_id}`, diagnosis);
+    }
+    return map;
+  }, [disrupted]);
 
   return (
     <div className="space-y-6">
@@ -441,6 +450,7 @@ export default function DisruptionLab() {
                         <TableHead>Destination</TableHead>
                         <TableHead>Product</TableHead>
                         <TableHead className="text-right">Unmet</TableHead>
+                        <TableHead>Cause</TableHead>
                         <TableHead>Priority</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -450,6 +460,9 @@ export default function DisruptionLab() {
                           <TableCell className="font-mono text-xs">{u.destination_id}</TableCell>
                           <TableCell className="font-mono text-xs">{u.product_id}</TableCell>
                           <TableCell className="text-right font-medium text-red-600">{Math.round(u.quantity).toLocaleString()}</TableCell>
+                          <TableCell>
+                            <CauseBadge diagnosis={diagnosisByRow.get(`${u.destination_id}|${u.product_id}`)} />
+                          </TableCell>
                           <TableCell>
                             <Badge variant={u.priority <= 2 ? 'destructive' : 'warning'}>P{u.priority}</Badge>
                           </TableCell>

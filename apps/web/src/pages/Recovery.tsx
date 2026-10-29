@@ -7,7 +7,8 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { compareScenario, getScenario, listScenarios, recoverScenario, type KPISnapshot, type RecoveryAction, type ScenarioSummary, type UnmetDemand } from '../lib/api';
+import { CauseBadge } from '../components/CauseBadge';
+import { compareScenario, getScenario, listScenarios, recoverScenario, type KPISnapshot, type RecoveryAction, type ScenarioSummary, type UnmetDemand, type UnmetDiagnosis } from '../lib/api';
 import { disruptionLabel } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
@@ -71,6 +72,21 @@ export default function Recovery() {
       | null
       | undefined;
     return persisted?.data?.unmet ?? [];
+  }, [recoverMut.data, scenarioQuery.data]);
+
+  const residualDiagnosis = React.useMemo(() => {
+    const diagnoses =
+      recoverMut.data?.residual_diagnosis ??
+      (scenarioQuery.data?.recovered_plan as unknown as
+        | { data?: { unmet_diagnosis?: UnmetDiagnosis[] } }
+        | null
+        | undefined)?.data?.unmet_diagnosis ??
+      [];
+    const map = new Map<string, UnmetDiagnosis>();
+    for (const diagnosis of diagnoses) {
+      map.set(`${diagnosis.destination_id}|${diagnosis.product_id}`, diagnosis);
+    }
+    return map;
   }, [recoverMut.data, scenarioQuery.data]);
 
   return (
@@ -258,6 +274,7 @@ export default function Recovery() {
                     <TableHead>Destination</TableHead>
                     <TableHead>Product</TableHead>
                     <TableHead className="text-right">Short</TableHead>
+                    <TableHead>Cause</TableHead>
                     <TableHead>Priority</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -267,6 +284,9 @@ export default function Recovery() {
                       <TableCell className="font-mono text-xs">{u.destination_id}</TableCell>
                       <TableCell className="font-mono text-xs">{u.product_id}</TableCell>
                       <TableCell className="text-right font-medium text-red-600">{Math.round(u.quantity).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <CauseBadge diagnosis={residualDiagnosis.get(`${u.destination_id}|${u.product_id}`)} />
+                      </TableCell>
                       <TableCell>
                         <Badge variant={u.priority <= 2 ? 'destructive' : 'warning'}>P{u.priority}</Badge>
                       </TableCell>

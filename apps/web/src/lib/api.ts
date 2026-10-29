@@ -82,6 +82,17 @@ export type UnmetDemand = {
   priority: number;
 };
 
+export type UnmetDiagnosis = {
+  destination_id: string;
+  product_id: string;
+  quantity: number;
+  priority: number;
+  cause: string;
+  summary: string;
+  explanation: string;
+  evidence: Record<string, unknown>;
+};
+
 export type PlanResponse = {
   id: string;
   dataset_id: string;
@@ -96,6 +107,7 @@ export type PlanResponse = {
   diagnostics?: Record<string, unknown>;
   utilization?: Record<string, unknown>;
   constraints?: { respect_deadlines?: boolean };
+  unmet_diagnosis?: UnmetDiagnosis[];
 };
 
 export type DisruptionRequest = {
@@ -206,6 +218,7 @@ export type RecoverResponse = {
   recovered_plan: PlanResponse;
   recovery_actions: RecoveryAction[];
   residual_unmet: UnmetDemand[];
+  residual_diagnosis?: UnmetDiagnosis[];
 };
 
 export type CompareResponse = {

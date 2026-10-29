@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.domain.schemas import AllocationInput, Demand, DisruptionRequest, Inventory, Route, ScenarioCreate
 from app.repo import database as db
 from app.services.allocation import solve_allocation
+from app.services.diagnosis import diagnose_unmet
 from app.services.disruption import apply_disruptions
 from app.services.kpi import compute_delivery_risk, compute_kpis
 from app.services.normalize import build_network, load_deadlines, load_destinations
@@ -138,6 +139,7 @@ def create_scenario(body: ScenarioCreate):
     )
     disrupted_result = solve_allocation(disrupted_input)
     disrupted_kpi = compute_kpis(disrupted_result, new_inventory, demand, new_routes)
+    disrupted_diagnosis = diagnose_unmet(disrupted_input, disrupted_result)
 
     destinations = _load_destinations(meta)
     # Delivery risk (deadline vs transit time) — KPI signal, never blocks feasibility
@@ -159,6 +161,7 @@ def create_scenario(body: ScenarioCreate):
         "violations": disrupted_result.violations,
         "disruption_description": description,
         "delivery_risk": disrupted_delivery,
+        "unmet_diagnosis": disrupted_diagnosis,
         "constraints": {"respect_deadlines": respect_deadlines},
     }
     try:
@@ -201,7 +204,7 @@ def create_scenario(body: ScenarioCreate):
         "disruption_description": description,
     }
 
-    return {"scenario": {"id": scenario_id, "baseline_plan_id": body.baseline_plan_id, "disruption": disruption_dict, "disrupted_plan_id": disrupted_plan_id, "status": "disrupted", "created_at": created_at}, "disrupted_plan": {"id": disrupted_plan_id, "dataset_id": dataset_id, "type": "disrupted", "status": "completed", "solver": disrupted_result.solver, "solver_status": disrupted_result.status, "created_at": created_at, "allocations": disrupted_data["allocations"], "unmet": disrupted_data["unmet"], "kpis": disrupted_data["kpis"]}, "impact": impact}
+    return {"scenario": {"id": scenario_id, "baseline_plan_id": body.baseline_plan_id, "disruption": disruption_dict, "disrupted_plan_id": disrupted_plan_id, "status": "disrupted", "created_at": created_at}, "disrupted_plan": {"id": disrupted_plan_id, "dataset_id": dataset_id, "type": "disrupted", "status": "completed", "solver": disrupted_result.solver, "solver_status": disrupted_result.status, "created_at": created_at, "allocations": disrupted_data["allocations"], "unmet": disrupted_data["unmet"], "kpis": disrupted_data["kpis"], "unmet_diagnosis": disrupted_diagnosis}, "impact": impact}
 
 
 @router.get("/{scenario_id}")
@@ -268,6 +271,9 @@ def recover_scenario(scenario_id: str):
     recovered_delivery = compute_delivery_risk(
         recovered_result.allocations, new_routes, _load_destinations(meta)
     )
+    recovered_diagnosis = diagnose_unmet(
+        disrupted_input, recovered_result, allow_backup=True
+    )
 
     recovered_plan_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
@@ -282,6 +288,7 @@ def recover_scenario(scenario_id: str):
         "status_detail": recovered_result.status,
         "violations": recovered_result.violations,
         "delivery_risk": recovered_delivery,
+        "unmet_diagnosis": recovered_diagnosis,
         "constraints": {"respect_deadlines": respect_deadlines},
     }
     try:
@@ -298,7 +305,7 @@ def recover_scenario(scenario_id: str):
     recovery_actions = recovered_result.diagnostics.get("recovery_actions", []) if isinstance(recovered_result.diagnostics, dict) else []
     residual_unmet = recovered_data["unmet"]
 
-    return {"recovered_plan": {"id": recovered_plan_id, "dataset_id": dataset_id, "type": "recovered", "status": "completed", "solver": recovered_result.solver, "solver_status": recovered_result.status, "created_at": created_at, "allocations": recovered_data["allocations"], "unmet": recovered_data["unmet"], "kpis": recovered_data["kpis"]}, "recovery_actions": recovery_actions, "residual_unmet": residual_unmet}
+    return {"recovered_plan": {"id": recovered_plan_id, "dataset_id": dataset_id, "type": "recovered", "status": "completed", "solver": recovered_result.solver, "solver_status": recovered_result.status, "created_at": created_at, "allocations": recovered_data["allocations"], "unmet": recovered_data["unmet"], "kpis": recovered_data["kpis"], "unmet_diagnosis": recovered_diagnosis}, "recovery_actions": recovery_actions, "residual_unmet": residual_unmet, "residual_diagnosis": recovered_diagnosis}
 
 
 @router.get("/{scenario_id}/compare")

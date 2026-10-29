@@ -7,7 +7,8 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { listDatasets, createPlan, getPlan, getDataset, listPlans } from '../lib/api';
+import { CauseBadge } from '../components/CauseBadge';
+import { listDatasets, createPlan, getPlan, getDataset, listPlans, type UnmetDiagnosis } from '../lib/api';
 import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
@@ -57,6 +58,14 @@ export default function Planner() {
   const kpis = plan?.kpis;
   const solverStatus = plan?.solver_status ?? null;
   const solverBadge = solverStatusTone(solverStatus, kpis?.unmet);
+
+  const diagnosisByRow = React.useMemo(() => {
+    const map = new Map<string, UnmetDiagnosis>();
+    for (const diagnosis of plan?.unmet_diagnosis ?? []) {
+      map.set(`${diagnosis.destination_id}|${diagnosis.product_id}`, diagnosis);
+    }
+    return map;
+  }, [plan]);
 
   return (
     <div className="space-y-6">
@@ -286,6 +295,7 @@ export default function Planner() {
                       <TableHead>Destination</TableHead>
                       <TableHead>Product</TableHead>
                       <TableHead className="text-right">Unmet qty</TableHead>
+                      <TableHead>Cause</TableHead>
                       <TableHead>Priority</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -295,6 +305,9 @@ export default function Planner() {
                         <TableCell className="font-mono text-xs">{u.destination_id}</TableCell>
                         <TableCell className="font-mono text-xs">{u.product_id}</TableCell>
                         <TableCell className="text-right font-medium text-red-600">{Math.round(u.quantity).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <CauseBadge diagnosis={diagnosisByRow.get(`${u.destination_id}|${u.product_id}`)} />
+                        </TableCell>
                         <TableCell>
                           <Badge variant={u.priority <= 2 ? 'destructive' : 'warning'}>P{u.priority}</Badge>
                         </TableCell>

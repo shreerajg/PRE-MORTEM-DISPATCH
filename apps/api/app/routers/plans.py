@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.domain.schemas import AllocationInput
 from app.repo import database as db
 from app.services.allocation import solve_allocation
+from app.services.diagnosis import diagnose_unmet
 from app.services.kpi import compute_delivery_risk, compute_kpis
 from app.services.normalize import build_network, load_deadlines, load_destinations
 
@@ -53,6 +54,7 @@ def create_plan(body: PlanCreateRequest):
     delivery_risk = compute_delivery_risk(
         result.allocations, allocation_input.routes, load_destinations(meta)
     )
+    unmet_diagnosis = diagnose_unmet(allocation_input, result)
 
     plan_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
@@ -70,6 +72,7 @@ def create_plan(body: PlanCreateRequest):
         "status_detail": result.status,
         "violations": result.violations,
         "delivery_risk": delivery_risk,
+        "unmet_diagnosis": unmet_diagnosis,
         "constraints": {"respect_deadlines": bool(body.respect_deadlines)},
     }
 
@@ -91,6 +94,7 @@ def create_plan(body: PlanCreateRequest):
         "kpis": data["kpis"],
         "diagnostics": data["diagnostics"],
         "constraints": data["constraints"],
+        "unmet_diagnosis": data["unmet_diagnosis"],
     }
 
 
@@ -130,4 +134,5 @@ def get_plan(plan_id: str):
         "utilization": data.get("utilization", {}),
         "delivery_risk": data.get("delivery_risk"),
         "constraints": data.get("constraints", {}),
+        "unmet_diagnosis": data.get("unmet_diagnosis", []),
     }

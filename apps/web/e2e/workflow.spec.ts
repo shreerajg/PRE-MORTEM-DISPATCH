@@ -30,6 +30,8 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByText('Unmet demand after disruption')).toBeVisible();
     // Fulfillment must visibly degrade from the 100% baseline
     await expect(page.getByText(/^89\.9% fulfilled$/)).toBeVisible();
+    // Every gap is explained, not just counted
+    await expect(page.getByText('Capacity used').first()).toBeVisible();
 
     // --- 4. Run recovery -------------------------------------------------
     await page.goto('/recovery');
