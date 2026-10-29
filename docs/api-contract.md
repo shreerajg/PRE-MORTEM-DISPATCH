@@ -89,9 +89,33 @@ Response:
                                 "description": "risk_score = ..." } },
   "diagnostics": { "elapsed_seconds": 0.002, "solver": "greedy" },
   "utilization": { "wh_utilization": 0.71, "route_utilization": 0.55 },
-  "constraints": { "respect_deadlines": false }
+  "constraints": { "respect_deadlines": false },
+  "unmet_diagnosis": []
 }
 ```
+
+Every unmet row also carries a diagnosis. The fields are computed from the same
+inputs and allocations as the plan:
+
+```json
+{
+  "destination_id": "DST-01", "product_id": "PRD-B", "quantity": 150, "priority": 1,
+  "cause": "capacity_shared",
+  "summary": "lane capacity was consumed by earlier demand",
+  "explanation": "Only 0 units of lane capacity remain for 150 unmet — earlier demand rows (priority order, then quantity) consumed it.",
+  "evidence": {
+    "demand": 350, "allocated": 200, "unmet": 150,
+    "reachable_inventory": 900, "remaining_inventory": 700,
+    "lane_capacity": 350, "remaining_capacity": 0,
+    "eligible_lanes": ["RT-09"], "deadline_blocked_lanes": [],
+    "contingency_lanes": ["RT-13"]
+  }
+}
+```
+
+Causes: `no_route`, `product_not_allowed`, `contingency_only`, `deadline_blocked`,
+`no_inventory`, `inventory_short`, `lane_capacity`, `inventory_shared`,
+`capacity_shared`, `combined`.
 
 When deadline enforcement is on, `diagnostics` also contains
 `deadline_enforced: true`, `lanes_excluded_by_deadline: ["RT-09", ...]` and
@@ -107,7 +131,8 @@ filter is applied before `limit`, so `limit=1&plan_type=baseline` is never
 emptied by newer plans of another type.
 
 ### `GET /plans/{id}`
-Same shape as the create response, including `solver_status` and `constraints`.
+Same shape as the create response, including `solver_status`, `constraints` and
+`unmet_diagnosis`.
 
 ---
 
@@ -117,10 +142,20 @@ Same shape as the create response, including `solver_status` and `constraints`.
 ```json
 {
   "baseline_plan_id": "uuid",
-  "disruption": { "type": "inventory_shortage",
-                  "params": { "warehouse_id": "WH-02", "product_id": "PRD-A", "reduction_pct": 60 } }
+  "name": "Q4 lane failure",
+  "disruptions": [
+    { "type": "route_closure", "params": { "route_id": "RT-03" } },
+    { "type": "inventory_shortage",
+      "params": { "warehouse_id": "WH-02", "product_id": "PRD-A", "reduction_pct": 60 } }
+  ]
 }
 ```
+
+`name` is optional (≤ 80 characters). Provide **either** a single `disruption`
+(legacy form) **or** 1–5 `disruptions`, not both. Events apply in order to the
+same copies of the planning inputs, so two shortages on the same stock compound
+multiplicatively and repeat closures are idempotent. A combination is stored as
+`{ "type": "compound", "events": [...] }`; a single event keeps the plain shape.
 
 Disruption parameter schemas:
 
@@ -134,8 +169,8 @@ Disruption parameter schemas:
 Response:
 ```json
 {
-  "scenario": { "id", "baseline_plan_id", "disruption", "disrupted_plan_id", "status": "disrupted", "created_at" },
-  "disrupted_plan": { "...": "full plan document" },
+  "scenario": { "id", "name", "baseline_plan_id", "disruption", "disrupted_plan_id", "status": "disrupted", "created_at" },
+  "disrupted_plan": { "...": "full plan document, including unmet_diagnosis" },
   "impact": {
     "fulfillment_delta": -0.1006, "cost_delta": -1620, "unmet_delta": 500,
     "at_risk_units": 0, "at_risk_delta": 0, "max_late_days": 0,
@@ -159,6 +194,23 @@ stays apples-to-apples.
 ### `GET /scenarios/{id}`
 `{ "scenario": {...}, "baseline_plan": {...}, "disrupted_plan": {...}, "recovered_plan": {...}|null }`
 
+### `PATCH /scenarios/{id}`
+```json
+{ "name": "Renamed run" }
+```
+Returns `{ "scenario": { ... "name": "Renamed run" } }`. A blank or whitespace-only
+name is `400`; more than 80 characters is `422`.
+
+### `DELETE /scenarios/{id}`
+Deletes the scenario **and** the disrupted/recovered plans it owns in one
+transaction. The baseline plan is never deleted, even when every scenario
+branched from it is removed.
+
+```json
+{ "deleted": true, "scenario_id": "...", "deleted_plan_ids": ["..."],
+  "baseline_plan_id": "..." }
+```
+
 ### `POST /scenarios/{id}/recover`
 No body. Re-plans with contingency lanes enabled.
 
@@ -175,6 +227,9 @@ No body. Re-plans with contingency lanes enabled.
   "residual_unmet": [ { "destination_id": "...", "product_id": "...", "quantity": 0, "priority": 1 } ]
 }
 ```
+
+`residual_diagnosis` uses the same shape as `unmet_diagnosis` and explains every
+remaining gap after recovery (for example `contingency_only` or `deadline_blocked`).
 
 ### `GET /scenarios/{id}/compare`
 ```json

@@ -17,8 +17,8 @@ number computed, not narrated.
 |---|---|---|
 | 1 | **Datasets** | Load a bundled 4-warehouse / 8-destination network, or upload six CSVs. Schema, type, duplicate and referential checks run before anything is planned. |
 | 2 | **Planner** | Solves a constrained allocation: inventory, lane capacity, lane availability, product eligibility, destination priority — and, optionally, destination deadlines as a hard constraint. Shows every shipment, every gap, and the risk-score breakdown. |
-| 3 | **Disruption Lab** | Mutates *real planning inputs* — reduced stock, zeroed supply, a closed lane, or added transit days — then re-solves. Impact is the difference between two computed plans. |
-| 4 | **Recovery** | Re-plans using contingency lanes and priority ordering, and lists each concrete allocation change with its unit cost. |
+| 3 | **Disruption Lab** | Mutates *real planning inputs* — reduced stock, zeroed supply, a closed lane, or added transit days — alone or up to five at once, applied in order. Impact is the difference between two computed plans. |
+| 4 | **Recovery** | Re-plans using contingency lanes and priority ordering, lists each concrete allocation change with its unit cost, and names the constraint behind every residual gap. |
 | 5 | **Compare** | Baseline / disrupted / recovered side by side, with server-computed deltas and a written trade-off. |
 | 6 | **Exports** | CSV built from the stored plan data, so it matches the screen exactly. |
 
@@ -35,6 +35,17 @@ through contingency capacity costs $3,410.*
 
 If recovery genuinely cannot cover demand, the app returns the residual gaps and names the
 limiting destination×product rows. It never reports a success it cannot compute.
+
+### Scenario engine
+
+- **Compound failures** — combine up to five disruptions in one scenario. Events apply in
+  order, so a second shortage on the same stock compounds on the first, and repeating a lane
+  closure is idempotent.
+- **Explained gaps** — every unmet row carries a cause computed from the plan's own inputs:
+  no lane, product filter, deadline, stock, lane capacity, or capacity/stock consumed by
+  earlier demand. The badge tooltip shows the supporting numbers.
+- **Named, disposable scenarios** — name a run, rename it, and delete it together with its
+  disrupted/recovered plans. The baseline plan is never deleted.
 
 ### Screens
 
@@ -102,13 +113,13 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 53 passed
+python -m pytest apps/api/tests -q          # 78 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
 # Browser E2E (needs both servers running)
-cd apps/web && npx playwright test          # 7 passed
+cd apps/web && npx playwright test          # 9 passed
 ```
 
 The suite asserts invariants, not just "it returned 200":
@@ -122,6 +133,9 @@ The suite asserts invariants, not just "it returned 200":
 - baseline is unchanged after a disruption is simulated against it
 - identical inputs reproduce identical allocations
 - equal-cost lanes are chosen deterministically, regardless of row order
+- compound events apply in order; repeated shortages compound, repeated closures do not
+- every unmet row carries a cause whose evidence matches the computed plan
+- deleting a scenario removes its own plans but never the baseline
 - hard deadline mode leaves late-only demand unmet; the default reports lateness as a KPI
 - scenarios inherit the baseline's deadline policy
 - concurrent SQLite writers wait for the lock instead of failing (WAL + busy timeout)
@@ -249,4 +263,3 @@ required. The console itself needs no account and continues to work either way.
 - Weight/volume constraints on lanes (product `weight_kg` is already captured)
 - Trained demand forecasting once a real history exists, with backtested error
 - Postgres + concurrent scenarios behind the existing repository interface
-- Scenario rename/delete and retention controls

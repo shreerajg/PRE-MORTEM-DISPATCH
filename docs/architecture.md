@@ -48,6 +48,7 @@ the whole history.
 | `routers/*` | HTTP shape, status codes, request validation | Business rules, solver logic |
 | `services/allocation.py` | Greedy + optional OR-Tools allocation | Touch HTTP, format responses |
 | `services/disruption.py` | Mutating planning inputs on copies | Mutate the caller's objects |
+| `services/diagnosis.py` | Explain every unmet row from the inputs + result | Change feasibility or invent causes |
 | `services/recovery.py` | Recovery re-plan and allocation diff | Claim success when infeasible |
 | `services/kpi.py` | KPI + delivery-risk + risk score | Depend on persistence |
 | `services/normalize.py` | CSV row → typed domain object | Silently drop rows |
@@ -122,6 +123,15 @@ sequenceDiagram
    relaxed replan. Verified by `test_plan_endpoint_enforces_and_scenarios_inherit_the_policy`.
 7. **Deterministic lane choice.** Equal-cost lanes are ordered by route id, so re-importing the
    same data in a different row order cannot silently change which lane is used.
+8. **Ordered compound events.** Up to five disruptions are applied sequentially to deep copies;
+   later events see earlier effects. The original dataset and baseline plan are never mutated.
+   Verified by `test_sequential_shortages_compound_and_leave_originals_untouched`.
+9. **Evidence-based diagnosis.** An unmet cause is only reported when the inputs support it
+   (missing lane, product filter, deadline, stock, capacity, or consumption by earlier demand),
+   and the evidence object carries the numbers used to decide.
+10. **Safe deletion.** Deleting a scenario removes only the disrupted/recovered plans it owns in
+    one transaction; the baseline plan always survives. Verified by
+    `test_delete_scenario_removes_owned_plans_but_keeps_baseline`.
 
 ## 5. Recovery model
 
@@ -137,7 +147,17 @@ Evidence for the demo: closing `RT-03` drops fulfillment 100 % → 89.9 %; recov
 `RT-13` and restores 100 % for **+$3,410**.
 
 If the network truly cannot cover demand, recovery returns the same residual and the comparison
-narrative names the specific destination×product gaps.
+narrative names the specific destination×product gaps. Each residual row also carries a
+structured diagnosis (for example `contingency_only`, `deadline_blocked`, `capacity_shared`) with
+the numbers behind it, so the UI can explain the binding constraint instead of listing a number.
+
+### 5.1 Compound scenarios
+
+A scenario may combine 1–5 disruptions. They are applied in order to deep copies, so effects
+compose: two shortages on the same stock compound, and a repeated closure is idempotent. A single
+event keeps the plain stored shape; combinations are stored as
+`{"type": "compound", "events": [...]}` and replayed identically during recovery. Scenario names
+are optional, and deleting a scenario deletes its own plans but never the baseline.
 
 ## 6. Deliberate omissions
 

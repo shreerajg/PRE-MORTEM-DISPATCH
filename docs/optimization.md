@@ -94,6 +94,17 @@ Consequence in the sample network: closing `RT-03` costs 500 units of DST-01 dem
 activates `RT-13` (WH-03 → DST-01, $7.60/unit) and restores full coverage for +$3,410. Without
 the backup lane the shortfall is reported as residual, not papered over.
 
+## Compound disruptions
+
+A scenario may apply several disruptions to the same inputs. They are applied
+sequentially to deep copies, so the solver sees one final input set:
+
+- two shortages of 60% and 50% on the same warehouse×product leave 20% of the original stock;
+- closing the same lane twice is idempotent;
+- a delay followed by a closure removes the lane, with the delay visible in the stored event list.
+
+The ordering is part of the scenario record and is replayed identically by recovery.
+
 ## Documented assumptions
 
 1. **Route delay does not change capacity.** It raises `time_days`, which feeds the delivery-risk
