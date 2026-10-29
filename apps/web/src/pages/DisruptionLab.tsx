@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Zap, TrendingDown, TrendingUp, FlaskConical, ArrowRight, Clock, Info } from 'lucide-react';
+import { Zap, TrendingDown, TrendingUp, FlaskConical, ArrowRight, Clock, Info, Plus, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -8,9 +8,11 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { createScenario, getDataset, listPlans, type ImpactSummary, type PlanResponse } from '../lib/api';
+import { createScenario, getDataset, listPlans, type DisruptionRequest, type ImpactSummary, type PlanResponse } from '../lib/api';
 import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
+
+const MAX_EVENTS = 5;
 
 type DisruptionType = 'inventory_shortage' | 'route_closure' | 'route_delay' | 'supply_interruption';
 
@@ -72,6 +74,12 @@ export default function DisruptionLab() {
   const [routeId, setRouteId] = React.useState('');
   const [reductionPct, setReductionPct] = React.useState('60');
   const [extraDays, setExtraDays] = React.useState('5');
+  const [events, setEvents] = React.useState<DisruptionRequest[]>([]);
+
+  // Events refer to ids from one dataset; switching baselines clears the queue.
+  React.useEffect(() => {
+    setEvents([]);
+  }, [baselineId]);
 
   // Keep selections valid whenever the dataset changes
   React.useEffect(() => {
@@ -84,9 +92,18 @@ export default function DisruptionLab() {
     if (routes.length && !routes.some((r) => r.id === routeId)) setRouteId(routes[0].id);
   }, [routes, routeId]);
 
+  const currentEvent = (): DisruptionRequest => ({
+    type,
+    params: buildParams(type, { warehouseId, productId, routeId, reductionPct, extraDays }),
+  });
+
+  const addEvent = () => {
+    if (events.length >= MAX_EVENTS) return;
+    setEvents((prev) => [...prev, currentEvent()]);
+  };
+
   const createMut = useMutation({
-    mutationFn: () =>
-      createScenario(baselineId, { type, params: buildParams(type, { warehouseId, productId, routeId, reductionPct, extraDays }) }),
+    mutationFn: () => createScenario(baselineId, events.length ? events : [currentEvent()]),
     onSuccess: (res) => {
       setScenarioId(res.scenario.id);
       setDisruptedPlan(res.disrupted_plan);
@@ -121,7 +138,7 @@ export default function DisruptionLab() {
           <CardTitle className="flex items-center gap-2">
             <FlaskConical className="h-4 w-4" /> Configure disruption
           </CardTitle>
-          <CardDescription>Disruptions modify planning inputs — inventory, lane availability, or transit time.</CardDescription>
+          <CardDescription>Disruptions modify planning inputs — inventory, lane availability, or transit time. Add up to five events; they apply in order.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -234,10 +251,53 @@ export default function DisruptionLab() {
             </p>
           ) : null}
 
-          <Button onClick={() => createMut.mutate()} disabled={!baselineId || createMut.isPending}>
-            <Zap className="mr-2 h-4 w-4" />
-            {createMut.isPending ? 'Simulating…' : 'Simulate disruption'}
-          </Button>
+          {events.length ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium text-slate-700">
+                  Combined scenario · {events.length}/{MAX_EVENTS} events
+                </div>
+                <button type="button" onClick={() => setEvents([])} className="text-xs text-slate-500 underline">
+                  Clear
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {events.map((event, index) => (
+                  <span
+                    key={`${event.type}-${index}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700"
+                  >
+                    <span className="font-mono text-[10px] text-slate-400">{index + 1}</span>
+                    {describeDisruption(event)}
+                    <button
+                      type="button"
+                      onClick={() => setEvents((prev) => prev.filter((_, i) => i !== index))}
+                      className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={`Remove disruption ${index + 1}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => createMut.mutate()} disabled={!baselineId || createMut.isPending}>
+              <Zap className="mr-2 h-4 w-4" />
+              {createMut.isPending ? 'Simulating…' : 'Simulate disruption'}
+            </Button>
+            <Button variant="outline" onClick={addEvent} disabled={events.length >= MAX_EVENTS}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add to scenario
+            </Button>
+            <span className="text-xs text-slate-500">
+              {events.length
+                ? 'Simulation runs the event list above.'
+                : 'Nothing added yet — the configuration above is simulated as one event. Add events to combine failures.'}
+            </span>
+          </div>
 
           {createMut.isError ? (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -419,6 +479,22 @@ function ImpactCard({ label, value, negative }: { label: string; value: string; 
       </CardContent>
     </Card>
   );
+}
+
+function describeDisruption(event: DisruptionRequest): string {
+  const params = event.params as Record<string, unknown>;
+  switch (event.type) {
+    case 'route_closure':
+      return `Close ${String(params.route_id)}`;
+    case 'route_delay':
+      return `Delay ${String(params.route_id)} +${String(params.extra_days)}d`;
+    case 'inventory_shortage':
+      return `Shortage ${String(params.warehouse_id)}/${String(params.product_id)} −${String(params.reduction_pct)}%`;
+    case 'supply_interruption':
+      return `Supply stop ${String(params.warehouse_id)}/${String(params.product_id)}`;
+    default:
+      return event.type.replace(/_/g, ' ');
+  }
 }
 
 function buildParams(

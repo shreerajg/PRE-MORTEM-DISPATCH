@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -215,11 +215,36 @@ class DisruptionRequest(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict, description="Parameters specific to the disruption type")
 
 
+MAX_SCENARIO_DISRUPTIONS = 5
+
+
 class ScenarioCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     baseline_plan_id: str = Field(..., description="Id of the baseline plan to branch from")
-    disruption: DisruptionRequest = Field(..., description="Disruption to apply")
+    disruption: Optional[DisruptionRequest] = Field(
+        default=None,
+        description="A single disruption (legacy form). Provide this or 'disruptions', not both.",
+    )
+    disruptions: Optional[List[DisruptionRequest]] = Field(
+        default=None,
+        description=(
+            f"One to {MAX_SCENARIO_DISRUPTIONS} disruptions applied in order to the same planning "
+            "inputs; later events see the effect of earlier ones."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_disruption_form(self):
+        has_single = self.disruption is not None
+        has_many = bool(self.disruptions)
+        if has_single and has_many:
+            raise ValueError("Provide either 'disruption' or 'disruptions', not both")
+        if not has_single and not has_many:
+            raise ValueError("Provide 'disruption' or a non-empty 'disruptions' list")
+        if has_many and len(self.disruptions) > MAX_SCENARIO_DISRUPTIONS:
+            raise ValueError(f"A scenario may combine at most {MAX_SCENARIO_DISRUPTIONS} disruptions")
+        return self
 
 
 # ---------------------------------------------------------------------------

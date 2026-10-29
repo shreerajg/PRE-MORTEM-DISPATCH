@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any, Dict, List, Tuple
 
 from app.domain.schemas import DisruptionRequest
@@ -35,8 +36,8 @@ def apply_disruption(inventory, routes, disruption: DisruptionRequest) -> Tuple[
             pct = float(reduction_pct)
         except Exception:
             raise ValueError("reduction_pct must be a number")
-        if pct < 0 or pct > 100:
-            raise ValueError("reduction_pct must be between 0 and 100")
+        if not math.isfinite(pct) or pct < 0 or pct > 100:
+            raise ValueError("reduction_pct must be a finite number between 0 and 100")
         # Find matching inventory entries and reduce
         found = False
         for inv in new_inventory:
@@ -102,8 +103,8 @@ def apply_disruption(inventory, routes, disruption: DisruptionRequest) -> Tuple[
             ed = float(extra_days)
         except Exception:
             raise ValueError("extra_days must be a number")
-        if ed < 0:
-            raise ValueError("extra_days must be non-negative")
+        if not math.isfinite(ed) or ed < 0:
+            raise ValueError("extra_days must be a finite, non-negative number")
         found = False
         for r in new_routes:
             rid = r.get("id") if isinstance(r, dict) else getattr(r, "id", None)
@@ -123,3 +124,25 @@ def apply_disruption(inventory, routes, disruption: DisruptionRequest) -> Tuple[
         raise ValueError(f"Unknown disruption type '{dtype}'. Allowed: inventory_shortage, supply_interruption, route_closure, route_delay")
 
     return new_inventory, new_routes, description
+
+
+def apply_disruptions(
+    inventory, routes, disruptions: List[DisruptionRequest]
+) -> Tuple[List[Any], List[Any], str]:
+    """Apply disruptions in order; each event sees the previous event's result.
+
+    This matters for overlapping events: two shortages on the same
+    warehouse×product compound multiplicatively, and closing a lane twice is
+    idempotent. The original inputs are never mutated.
+    """
+    if not disruptions:
+        raise ValueError("At least one disruption is required")
+
+    current_inventory, current_routes = inventory, routes
+    descriptions: List[str] = []
+    for disruption in disruptions:
+        current_inventory, current_routes, description = apply_disruption(
+            current_inventory, current_routes, disruption
+        )
+        descriptions.append(description)
+    return current_inventory, current_routes, " + ".join(descriptions)

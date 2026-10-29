@@ -76,6 +76,35 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByText('Deadlines: enforced')).toBeVisible();
   });
 
+  test('combines two disruptions into one scenario', async ({ page }) => {
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/planner');
+    await page.getByRole('button', { name: /generate baseline/i }).click();
+    await expect(page.getByText(/Baseline plan created/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/disruption');
+    await page.getByLabel('Disruption type').selectOption('route_closure');
+    await page.getByLabel('Route').selectOption('RT-03');
+    await page.getByRole('button', { name: /add to scenario/i }).click();
+    await expect(page.getByText(/Combined scenario · 1\/5 events/)).toBeVisible();
+
+    await page.getByLabel('Disruption type').selectOption('inventory_shortage');
+    await page.getByLabel('Warehouse').selectOption('WH-02');
+    await page.getByLabel('Product').selectOption('PRD-A');
+    await page.getByRole('button', { name: /add to scenario/i }).click();
+    await expect(page.getByText(/Combined scenario · 2\/5 events/)).toBeVisible();
+    await expect(page.getByText('Close RT-03')).toBeVisible();
+    await expect(page.getByText(/Shortage WH-02\/PRD-A/)).toBeVisible();
+
+    await page.getByRole('button', { name: /simulate disruption/i }).click();
+    await expect(
+      page.getByText(/Route closure: set route RT-03 available=False \+ Inventory shortage/),
+    ).toBeVisible({ timeout: 20_000 });
+  });
+
   test('empty states explain what to do next', async ({ page }) => {
     // Pin the scenario list to empty so the assertion cannot race a seeded backend.
     await page.route('**/api/v1/scenarios/?limit=*', (route) =>

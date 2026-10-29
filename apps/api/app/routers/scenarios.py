@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from app.domain.schemas import AllocationInput, Demand, DisruptionRequest, Inventory, Route, ScenarioCreate
 from app.repo import database as db
 from app.services.allocation import solve_allocation
-from app.services.disruption import apply_disruption
+from app.services.disruption import apply_disruptions
 from app.services.kpi import compute_delivery_risk, compute_kpis
 from app.services.normalize import build_network, load_deadlines, load_destinations
 from app.services.recovery import recover_allocation
@@ -28,6 +28,26 @@ def _load_dataset_inventory_routes(dataset_meta: Dict[str, Any]):
 
 def _load_destinations(dataset_meta: Dict[str, Any]) -> List[Dict[str, Any]]:
     return load_destinations(dataset_meta)
+
+
+def _requested_disruptions(body: ScenarioCreate) -> List[DisruptionRequest]:
+    if body.disruptions:
+        return list(body.disruptions)
+    assert body.disruption is not None  # guaranteed by ScenarioCreate validation
+    return [body.disruption]
+
+
+def _stored_disruption_payload(events: List[DisruptionRequest]) -> Dict[str, Any]:
+    """Single events keep the familiar shape; combinations become a compound event."""
+    if len(events) == 1:
+        return events[0].model_dump()
+    return {"type": "compound", "events": [event.model_dump() for event in events]}
+
+
+def _stored_disruptions(payload: Dict[str, Any]) -> List[DisruptionRequest]:
+    if isinstance(payload, dict) and payload.get("type") == "compound":
+        return [DisruptionRequest(**event) for event in payload.get("events", [])]
+    return [DisruptionRequest(**payload)]
 
 
 def _scenario_summary(scen: Dict[str, Any]) -> Dict[str, Any]:
@@ -99,12 +119,10 @@ def create_scenario(body: ScenarioCreate):
         (baseline_data.get("constraints") or {}).get("respect_deadlines", False)
     )
 
-    # Validate disruption
-    disruption = body.disruption
-    # disruption is already a DisruptionRequest (pydantic)
-    # Apply disruption
+    # Validate and apply every requested disruption in order
+    requested = _requested_disruptions(body)
     try:
-        new_inventory, new_routes, description = apply_disruption(inventory, routes, disruption)
+        new_inventory, new_routes, description = apply_disruptions(inventory, routes, requested)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
@@ -150,7 +168,7 @@ def create_scenario(body: ScenarioCreate):
 
     # Save scenario
     scenario_id = str(uuid.uuid4())
-    disruption_dict = disruption.model_dump() if hasattr(disruption, "model_dump") else dict(disruption)
+    disruption_dict = _stored_disruption_payload(requested)
     try:
         db.save_scenario(scenario_id, body.baseline_plan_id, disruption_dict, disrupted_plan_id, None, status="disrupted", created_at=created_at)
     except Exception as e:
@@ -222,15 +240,14 @@ def recover_scenario(scenario_id: str):
         )
     )
 
-    # Re-apply disruption to get the same disrupted inputs (idempotent)
-    disruption_dict = scen.get("disruption", {})
+    # Re-apply the stored disruption(s) to get the same disrupted inputs (idempotent)
     try:
-        disruption = DisruptionRequest(**disruption_dict) if isinstance(disruption_dict, dict) else disruption_dict
+        replay = _stored_disruptions(scen.get("disruption", {}))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid disruption in scenario: {e}")
 
     try:
-        new_inventory, new_routes, description = apply_disruption(inventory, routes, disruption)
+        new_inventory, new_routes, description = apply_disruptions(inventory, routes, replay)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 

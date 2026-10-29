@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { compareScenario, exportScenario, listScenarios } from '../lib/api';
+import { disruptionLabel } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 export default function Exports() {
@@ -95,7 +96,7 @@ export default function Exports() {
                 <option value="">Select a scenario…</option>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.id.slice(0, 8)} · {(s.disruption?.type ?? '').replace(/_/g, ' ')} · {s.status}
+                    {s.id.slice(0, 8)} · {disruptionLabel(s.disruption)} · {s.status}
                   </option>
                 ))}
               </Select>

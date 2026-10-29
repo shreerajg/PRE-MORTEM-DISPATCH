@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { compareScenario, getScenario, listScenarios, recoverScenario, type KPISnapshot, type RecoveryAction, type ScenarioSummary, type UnmetDemand } from '../lib/api';
+import { disruptionLabel } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 export default function Recovery() {
@@ -107,7 +108,7 @@ export default function Recovery() {
                 <option value="">Select a scenario…</option>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.id.slice(0, 8)} · {(s.disruption?.type ?? 'disruption').replace(/_/g, ' ')} · {s.status} ·{' '}
+                    {s.id.slice(0, 8)} · {disruptionLabel(s.disruption)} · {s.status} ·{' '}
                     {s.created_at.slice(0, 16).replace('T', ' ')}
                   </option>
                 ))}
@@ -129,7 +130,7 @@ export default function Recovery() {
           {active ? (
             <div className="rounded-md bg-slate-50 p-3 text-xs">
               <div className="font-medium">
-                Scenario {active.id.slice(0, 12)}… — {(active.disruption?.type ?? '').replace(/_/g, ' ')}
+                Scenario {active.id.slice(0, 12)}… — {disruptionLabel(active.disruption)}
               </div>
               <div className="mt-1 flex flex-wrap gap-2">
                 <Badge variant="secondary">Baseline {active.baseline_plan_id.slice(0, 8)}</Badge>

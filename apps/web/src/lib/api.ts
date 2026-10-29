@@ -103,6 +103,10 @@ export type DisruptionRequest = {
   params: Record<string, unknown>;
 };
 
+/** A scenario may combine several disruptions; single events keep the bare shape. */
+export type CompoundDisruption = { type: 'compound'; events: DisruptionRequest[] };
+export type StoredDisruption = DisruptionRequest | CompoundDisruption;
+
 export type ImpactSummary = {
   fulfillment_delta: number;
   cost_delta: number;
@@ -149,7 +153,7 @@ export type ScenarioSummary = {
   baseline_plan_id: string;
   disrupted_plan_id: string | null;
   recovered_plan_id: string | null;
-  disruption: DisruptionRequest;
+  disruption: StoredDisruption;
   kpis: {
     baseline: KPISnapshot | null;
     disrupted: KPISnapshot | null;
@@ -174,7 +178,7 @@ export type ScenarioCreateResponse = {
   scenario: {
     id: string;
     baseline_plan_id: string;
-    disruption: DisruptionRequest;
+    disruption: StoredDisruption;
     disrupted_plan_id: string;
     status: string;
     created_at: string;
@@ -189,7 +193,7 @@ export type ScenarioDetail = {
     baseline_plan_id: string;
     disrupted_plan_id: string | null;
     recovered_plan_id: string | null;
-    disruption: DisruptionRequest;
+    disruption: StoredDisruption;
     status: string;
     created_at: string;
   };
@@ -372,12 +376,12 @@ export async function getPlan(id: string): Promise<PlanResponse> {
 
 export async function createScenario(
   baselinePlanId: string,
-  disruption: DisruptionRequest,
+  disruptions: DisruptionRequest[],
 ): Promise<ScenarioCreateResponse> {
   return request<ScenarioCreateResponse>('/api/v1/scenarios/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ baseline_plan_id: baselinePlanId, disruption }),
+    body: JSON.stringify({ baseline_plan_id: baselinePlanId, disruptions }),
   });
 }
 

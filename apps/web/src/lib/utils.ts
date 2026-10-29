@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { StoredDisruption } from './api';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -16,4 +17,14 @@ export function solverStatusTone(status?: string | null, unmet?: number | null):
   if (status === 'optimal') return 'success';
   if (status === 'feasible') return unmet != null && unmet > 1e-6 ? 'warning' : 'success';
   return 'destructive';
+}
+
+/** Human label for a stored disruption, including combined scenarios. */
+export function disruptionLabel(disruption?: StoredDisruption | null): string {
+  if (!disruption) return '—';
+  if ('events' in disruption) {
+    const count = disruption.events.length;
+    return `${count} combined disruption${count === 1 ? '' : 's'}`;
+  }
+  return disruption.type.replace(/_/g, ' ');
 }

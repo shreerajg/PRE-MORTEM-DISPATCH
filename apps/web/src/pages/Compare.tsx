@@ -9,7 +9,7 @@ import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
 import { compareScenario, listScenarios } from '../lib/api';
-import { solverStatusTone } from '../lib/utils';
+import { disruptionLabel, solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -137,7 +137,7 @@ export default function Compare() {
             <option value="">Select a scenario…</option>
             {scenarios.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.id.slice(0, 8)} · {(s.disruption?.type ?? '').replace(/_/g, ' ')} · {s.status}
+                {s.id.slice(0, 8)} · {disruptionLabel(s.disruption)} · {s.status}
               </option>
             ))}
           </Select>
