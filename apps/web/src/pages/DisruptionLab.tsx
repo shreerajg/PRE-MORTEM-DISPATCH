@@ -76,6 +76,7 @@ export default function DisruptionLab() {
   const [reductionPct, setReductionPct] = React.useState('60');
   const [extraDays, setExtraDays] = React.useState('5');
   const [events, setEvents] = React.useState<DisruptionRequest[]>([]);
+  const [scenarioName, setScenarioName] = React.useState('');
 
   // Events refer to ids from one dataset; switching baselines clears the queue.
   React.useEffect(() => {
@@ -104,7 +105,8 @@ export default function DisruptionLab() {
   };
 
   const createMut = useMutation({
-    mutationFn: () => createScenario(baselineId, events.length ? events : [currentEvent()]),
+    mutationFn: () =>
+      createScenario(baselineId, events.length ? events : [currentEvent()], scenarioName),
     onSuccess: (res) => {
       setScenarioId(res.scenario.id);
       setDisruptedPlan(res.disrupted_plan);
@@ -169,6 +171,21 @@ export default function DisruptionLab() {
                 </div>
               ) : null}
             </div>
+            <div>
+              <label htmlFor="scenario-name" className="text-xs font-medium text-slate-600">
+                Scenario name (optional)
+              </label>
+              <Input
+                id="scenario-name"
+                value={scenarioName}
+                maxLength={80}
+                placeholder="e.g. Q4 lane closure + warehouse outage"
+                onChange={(e) => setScenarioName(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label htmlFor="disruption-type" className="text-xs font-medium text-slate-600">
                 Disruption type

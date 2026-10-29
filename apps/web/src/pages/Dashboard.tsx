@@ -19,7 +19,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { health, getPlan, listPlans, listScenarios } from '../lib/api';
-import { disruptionLabel, solverStatusTone } from '../lib/utils';
+import { disruptionLabel, scenarioTitle, solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const PIE_COLORS = ['#0f172a', '#f87171'];
@@ -227,7 +227,7 @@ export default function Dashboard() {
                   <TableBody>
                     {scenarios.map((s) => (
                       <TableRow key={s.id}>
-                        <TableCell className="font-mono text-xs">{s.id.slice(0, 8)}</TableCell>
+                        <TableCell className="font-mono text-xs" title={s.id}>{scenarioTitle(s)}</TableCell>
                         <TableCell className="text-sm">{disruptionLabel(s.disruption)}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {s.kpis.baseline ? `${(s.kpis.baseline.fulfillment_rate * 100).toFixed(1)}%` : '—'}

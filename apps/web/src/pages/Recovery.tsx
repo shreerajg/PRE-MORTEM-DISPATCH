@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HeartPulse, AlertTriangle, ArrowRight, CheckCircle2, Wrench, RefreshCw } from 'lucide-react';
+import { HeartPulse, AlertTriangle, ArrowRight, CheckCircle2, Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -8,8 +8,8 @@ import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { CauseBadge } from '../components/CauseBadge';
-import { compareScenario, getScenario, listScenarios, recoverScenario, type KPISnapshot, type RecoveryAction, type ScenarioSummary, type UnmetDemand, type UnmetDiagnosis } from '../lib/api';
-import { disruptionLabel } from '../lib/utils';
+import { compareScenario, deleteScenario, getScenario, listScenarios, recoverScenario, type KPISnapshot, type RecoveryAction, type ScenarioSummary, type UnmetDemand, type UnmetDiagnosis } from '../lib/api';
+import { disruptionLabel, scenarioTitle } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 export default function Recovery() {
@@ -49,6 +49,24 @@ export default function Recovery() {
       qc.invalidateQueries({ queryKey: ['compare', sid] });
     },
   });
+
+  const deleteMut = useMutation({
+    mutationFn: () => deleteScenario(sid),
+    onSuccess: () => {
+      setSid('');
+      setScenarioId(null);
+      setRecoveredPlan(null);
+      qc.invalidateQueries({ queryKey: ['scenarios'] });
+    },
+  });
+
+  const onDelete = () => {
+    if (!sid) return;
+    const confirmed = window.confirm(
+      'Delete this scenario and its disrupted/recovered plans? The baseline plan is kept.',
+    );
+    if (confirmed) deleteMut.mutate();
+  };
 
   const active = scenarios.find((s) => s.id === sid) as ScenarioSummary | undefined;
   const cmp = compareQuery.data;
@@ -124,7 +142,7 @@ export default function Recovery() {
                 <option value="">Select a scenario…</option>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.id.slice(0, 8)} · {disruptionLabel(s.disruption)} · {s.status} ·{' '}
+                    {scenarioTitle(s)} · {disruptionLabel(s.disruption)} · {s.status} ·{' '}
                     {s.created_at.slice(0, 16).replace('T', ' ')}
                   </option>
                 ))}
@@ -135,10 +153,19 @@ export default function Recovery() {
                 </div>
               ) : null}
             </div>
-            <div className="flex items-end">
-              <Button onClick={() => recoverMut.mutate()} disabled={!sid || recoverMut.isPending} className="w-full">
+            <div className="flex items-end gap-2">
+              <Button onClick={() => recoverMut.mutate()} disabled={!sid || recoverMut.isPending} className="flex-1">
                 {recoverMut.isPending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Wrench className="mr-2 h-4 w-4" />}
                 {recoverMut.isPending ? 'Re-planning…' : recoveredK ? 'Re-run recovery' : 'Run recovery'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={onDelete}
+                disabled={!sid || deleteMut.isPending}
+                aria-label="Delete scenario"
+                title="Delete this scenario and its plans (baseline kept)"
+              >
+                <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -146,7 +173,7 @@ export default function Recovery() {
           {active ? (
             <div className="rounded-md bg-slate-50 p-3 text-xs">
               <div className="font-medium">
-                Scenario {active.id.slice(0, 12)}… — {disruptionLabel(active.disruption)}
+                Scenario {scenarioTitle(active)} — {disruptionLabel(active.disruption)}
               </div>
               <div className="mt-1 flex flex-wrap gap-2">
                 <Badge variant="secondary">Baseline {active.baseline_plan_id.slice(0, 8)}</Badge>
@@ -164,6 +191,11 @@ export default function Recovery() {
           {recoverMut.isError ? (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {String((recoverMut.error as Error).message)}
+            </div>
+          ) : null}
+          {deleteMut.isError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {String((deleteMut.error as Error).message)}
             </div>
           ) : null}
         </CardContent>

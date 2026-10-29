@@ -28,3 +28,8 @@ export function disruptionLabel(disruption?: StoredDisruption | null): string {
   }
   return disruption.type.replace(/_/g, ' ');
 }
+
+/** Scenario name when one was given, otherwise a short id. */
+export function scenarioTitle(scenario: { id: string; name?: string | null }): string {
+  return scenario.name?.trim() || scenario.id.slice(0, 8);
+}

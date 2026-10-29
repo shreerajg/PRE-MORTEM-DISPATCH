@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app.domain.schemas import AllocationInput, Demand, DisruptionRequest, Inventory, Route, ScenarioCreate
+from app.domain.schemas import AllocationInput, Demand, DisruptionRequest, Inventory, Route, ScenarioCreate, ScenarioRename
 from app.repo import database as db
 from app.services.allocation import solve_allocation
 from app.services.diagnosis import diagnose_unmet
@@ -51,6 +51,13 @@ def _stored_disruptions(payload: Dict[str, Any]) -> List[DisruptionRequest]:
     return [DisruptionRequest(**payload)]
 
 
+def _clean_name(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
 def _scenario_summary(scen: Dict[str, Any]) -> Dict[str, Any]:
     """Compact scenario row for lists / dashboard recency panels."""
     baseline_plan = db.get_plan(scen["baseline_plan_id"]) if scen.get("baseline_plan_id") else None
@@ -62,6 +69,7 @@ def _scenario_summary(scen: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "id": scen["id"],
+        "name": scen.get("name"),
         "status": scen.get("status"),
         "created_at": scen.get("created_at"),
         "baseline_plan_id": scen.get("baseline_plan_id"),
@@ -172,8 +180,18 @@ def create_scenario(body: ScenarioCreate):
     # Save scenario
     scenario_id = str(uuid.uuid4())
     disruption_dict = _stored_disruption_payload(requested)
+    scenario_name = _clean_name(body.name)
     try:
-        db.save_scenario(scenario_id, body.baseline_plan_id, disruption_dict, disrupted_plan_id, None, status="disrupted", created_at=created_at)
+        db.save_scenario(
+            scenario_id,
+            body.baseline_plan_id,
+            disruption_dict,
+            disrupted_plan_id,
+            None,
+            status="disrupted",
+            created_at=created_at,
+            name=scenario_name,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save scenario: {e}")
 
@@ -204,7 +222,7 @@ def create_scenario(body: ScenarioCreate):
         "disruption_description": description,
     }
 
-    return {"scenario": {"id": scenario_id, "baseline_plan_id": body.baseline_plan_id, "disruption": disruption_dict, "disrupted_plan_id": disrupted_plan_id, "status": "disrupted", "created_at": created_at}, "disrupted_plan": {"id": disrupted_plan_id, "dataset_id": dataset_id, "type": "disrupted", "status": "completed", "solver": disrupted_result.solver, "solver_status": disrupted_result.status, "created_at": created_at, "allocations": disrupted_data["allocations"], "unmet": disrupted_data["unmet"], "kpis": disrupted_data["kpis"], "unmet_diagnosis": disrupted_diagnosis}, "impact": impact}
+    return {"scenario": {"id": scenario_id, "name": scenario_name, "baseline_plan_id": body.baseline_plan_id, "disruption": disruption_dict, "disrupted_plan_id": disrupted_plan_id, "status": "disrupted", "created_at": created_at}, "disrupted_plan": {"id": disrupted_plan_id, "dataset_id": dataset_id, "type": "disrupted", "status": "completed", "solver": disrupted_result.solver, "solver_status": disrupted_result.status, "created_at": created_at, "allocations": disrupted_data["allocations"], "unmet": disrupted_data["unmet"], "kpis": disrupted_data["kpis"], "unmet_diagnosis": disrupted_diagnosis}, "impact": impact}
 
 
 @router.get("/{scenario_id}")
@@ -217,6 +235,41 @@ def get_scenario(scenario_id: str):
     disrupted_plan = db.get_plan(scen["disrupted_plan_id"]) if scen.get("disrupted_plan_id") else None
     recovered_plan = db.get_plan(scen["recovered_plan_id"]) if scen.get("recovered_plan_id") else None
     return {"scenario": scen, "baseline_plan": baseline_plan, "disrupted_plan": disrupted_plan, "recovered_plan": recovered_plan}
+
+
+@router.patch("/{scenario_id}")
+def rename_scenario(scenario_id: str, body: ScenarioRename):
+    scen = db.get_scenario(scenario_id)
+    if not scen:
+        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
+    name = _clean_name(body.name)
+    if not name:
+        raise HTTPException(status_code=400, detail="Scenario name cannot be blank")
+    db.update_scenario(scenario_id, {"name": name})
+    return {"scenario": db.get_scenario(scenario_id)}
+
+
+@router.delete("/{scenario_id}")
+def delete_scenario(scenario_id: str):
+    """Delete a scenario and the plans it owns; the baseline plan is untouched."""
+    scen = db.get_scenario(scenario_id)
+    if not scen:
+        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
+
+    owned_plan_ids = [
+        plan_id
+        for plan_id in (scen.get("disrupted_plan_id"), scen.get("recovered_plan_id"))
+        if plan_id
+    ]
+    deleted = db.delete_scenario_with_plans(scenario_id, owned_plan_ids)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
+    return {
+        "deleted": True,
+        "scenario_id": scenario_id,
+        "deleted_plan_ids": owned_plan_ids,
+        "baseline_plan_id": scen.get("baseline_plan_id"),
+    }
 
 
 @router.post("/{scenario_id}/recover")

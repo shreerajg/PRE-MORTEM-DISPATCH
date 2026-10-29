@@ -107,6 +107,33 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     ).toBeVisible({ timeout: 20_000 });
   });
 
+  test('named scenario can be deleted without touching the baseline', async ({ page }) => {
+    const scenarioName = `E2E named ${Date.now()}`;
+
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/planner');
+    await page.getByRole('button', { name: /generate baseline/i }).click();
+    await expect(page.getByText(/Baseline plan created/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/disruption');
+    await page.getByLabel('Scenario name (optional)').fill(scenarioName);
+    await page.getByLabel('Disruption type').selectOption('route_closure');
+    await page.getByLabel('Route').selectOption('RT-03');
+    await page.getByRole('button', { name: /simulate disruption/i }).click();
+    await expect(page.getByText(/Route closure: set route RT-03 available=False/)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/recovery');
+    await expect(page.getByLabel('Scenario', { exact: true })).toContainText(scenarioName);
+    await expect(page.getByText(`Scenario ${scenarioName}`)).toBeVisible();
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Delete scenario' }).click();
+    await expect(page.getByLabel('Scenario', { exact: true })).not.toContainText(scenarioName);
+  });
+
   test('empty states explain what to do next', async ({ page }) => {
     // Pin the scenario list to empty so the assertion cannot race a seeded backend.
     await page.route('**/api/v1/scenarios/?limit=*', (route) =>
@@ -119,7 +146,7 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
 
     await page.goto('/recovery');
     // The scenario selector and its empty-state guidance must both be reachable
-    await expect(page.getByLabel('Scenario')).toBeVisible();
+    await expect(page.getByLabel('Scenario', { exact: true })).toBeVisible();
     await expect(page.getByText(/No scenarios yet/)).toBeVisible();
     await expect(page.getByText('No recovery run yet.')).toBeVisible();
   });

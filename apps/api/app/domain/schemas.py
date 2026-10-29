@@ -222,6 +222,9 @@ class ScenarioCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     baseline_plan_id: str = Field(..., description="Id of the baseline plan to branch from")
+    name: Optional[str] = Field(
+        default=None, max_length=80, description="Optional human label for the scenario"
+    )
     disruption: Optional[DisruptionRequest] = Field(
         default=None,
         description="A single disruption (legacy form). Provide this or 'disruptions', not both.",
@@ -245,6 +248,12 @@ class ScenarioCreate(BaseModel):
         if has_many and len(self.disruptions) > MAX_SCENARIO_DISRUPTIONS:
             raise ValueError(f"A scenario may combine at most {MAX_SCENARIO_DISRUPTIONS} disruptions")
         return self
+
+
+class ScenarioRename(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = Field(..., min_length=1, max_length=80, description="New scenario name")
 
 
 # ---------------------------------------------------------------------------

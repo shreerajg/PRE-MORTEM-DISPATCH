@@ -103,6 +103,7 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS scenarios (
                 id TEXT PRIMARY KEY,
+                name TEXT,
                 baseline_plan_id TEXT NOT NULL,
                 disruption TEXT NOT NULL DEFAULT '{}',
                 disrupted_plan_id TEXT,
@@ -121,6 +122,12 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_scenarios_baseline ON scenarios(baseline_plan_id);
             """
         )
+        # Existing databases predate scenario names; add the column in place.
+        scenario_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(scenarios)").fetchall()
+        }
+        if "name" not in scenario_columns:
+            conn.execute("ALTER TABLE scenarios ADD COLUMN name TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -271,15 +278,17 @@ def save_scenario(
     recovered_plan_id: Optional[str],
     status: str,
     created_at: str,
+    name: Optional[str] = None,
 ) -> None:
     conn = _connect()
     try:
         conn.execute(
             """INSERT OR REPLACE INTO scenarios
-               (id, baseline_plan_id, disruption, disrupted_plan_id, recovered_plan_id, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (id, name, baseline_plan_id, disruption, disrupted_plan_id, recovered_plan_id, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 scenario_id,
+                name,
                 baseline_plan_id,
                 json.dumps(disruption),
                 disrupted_plan_id,
@@ -302,6 +311,7 @@ def get_scenario(scenario_id: str) -> Optional[Dict[str, Any]]:
             return None
         return {
             "id": row["id"],
+            "name": row["name"] if "name" in row.keys() else None,
             "baseline_plan_id": row["baseline_plan_id"],
             "disruption": _json_load(row["disruption"], {}),
             "disrupted_plan_id": row["disrupted_plan_id"],
@@ -327,6 +337,7 @@ def list_scenarios(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
             result.append(
                 {
                     "id": row["id"],
+                    "name": row["name"] if "name" in row.keys() else None,
                     "baseline_plan_id": row["baseline_plan_id"],
                     "disruption": _json_load(row["disruption"], {}),
                     "disrupted_plan_id": row["disrupted_plan_id"],
@@ -346,7 +357,7 @@ def update_scenario(scenario_id: str, fields: Dict[str, Any]) -> None:
     ``fields`` values for ``disruption`` that are dicts/lists are JSON-encoded
     automatically.  Only whitelisted columns are applied.
     """
-    allowed = {"baseline_plan_id", "disruption", "disrupted_plan_id", "recovered_plan_id", "status", "created_at"}
+    allowed = {"name", "baseline_plan_id", "disruption", "disrupted_plan_id", "recovered_plan_id", "status", "created_at"}
     updates: Dict[str, Any] = {}
     for key, value in fields.items():
         if key not in allowed:
@@ -396,3 +407,21 @@ def count_plans(plan_type: Optional[str] = None) -> int:
 
 def count_scenarios() -> int:
     return _count("scenarios")
+
+
+def delete_scenario_with_plans(scenario_id: str, plan_ids: List[str]) -> bool:
+    """Delete a scenario and the plans it owns in one transaction.
+
+    Callers decide which plans belong to the scenario; the baseline plan is
+    never included, so deleting a scenario cannot remove shared history.
+    """
+    conn = _connect()
+    try:
+        if plan_ids:
+            placeholders = ",".join("?" for _ in plan_ids)
+            conn.execute(f"DELETE FROM plans WHERE id IN ({placeholders})", plan_ids)
+        cur = conn.execute("DELETE FROM scenarios WHERE id = ?", (scenario_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()

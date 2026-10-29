@@ -160,6 +160,7 @@ export type RecoveryAction = {
 
 export type ScenarioSummary = {
   id: string;
+  name?: string | null;
   status: string;
   created_at: string;
   baseline_plan_id: string;
@@ -189,6 +190,7 @@ export type PlanSummary = {
 export type ScenarioCreateResponse = {
   scenario: {
     id: string;
+    name?: string | null;
     baseline_plan_id: string;
     disruption: StoredDisruption;
     disrupted_plan_id: string;
@@ -202,6 +204,7 @@ export type ScenarioCreateResponse = {
 export type ScenarioDetail = {
   scenario: {
     id: string;
+    name?: string | null;
     baseline_plan_id: string;
     disrupted_plan_id: string | null;
     recovered_plan_id: string | null;
@@ -390,12 +393,29 @@ export async function getPlan(id: string): Promise<PlanResponse> {
 export async function createScenario(
   baselinePlanId: string,
   disruptions: DisruptionRequest[],
+  name?: string,
 ): Promise<ScenarioCreateResponse> {
+  const body: Record<string, unknown> = { baseline_plan_id: baselinePlanId, disruptions };
+  if (name?.trim()) body.name = name.trim();
   return request<ScenarioCreateResponse>('/api/v1/scenarios/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ baseline_plan_id: baselinePlanId, disruptions }),
+    body: JSON.stringify(body),
   });
+}
+
+export async function renameScenario(id: string, name: string): Promise<void> {
+  await request(`/api/v1/scenarios/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteScenario(
+  id: string,
+): Promise<{ deleted: boolean; deleted_plan_ids: string[] }> {
+  return request(`/api/v1/scenarios/${id}`, { method: 'DELETE' });
 }
 
 export async function getScenario(id: string): Promise<ScenarioDetail> {
