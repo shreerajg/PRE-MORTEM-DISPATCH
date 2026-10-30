@@ -257,6 +257,7 @@ def list_plans(limit: int = 25, plan_type: Optional[str] = None, offset: int = 0
                     "solver_status": data.get("status_detail"),
                     "created_at": row["created_at"],
                     "kpis": data.get("kpis", {}),
+                    "constraints": data.get("constraints", {}),
                     "allocation_count": len(data.get("allocations", []) or []),
                     "unmet_count": len(data.get("unmet", []) or []),
                 }

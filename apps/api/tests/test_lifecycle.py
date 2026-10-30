@@ -51,6 +51,15 @@ def test_rename_scenario(client, baseline):
     assert client.patch("/api/v1/scenarios/nope", json={"name": "x"}).status_code == 404
 
 
+def test_export_includes_scenario_name(client, baseline):
+    body = _create(client, baseline, name="Named export")
+    scenario_id = body["scenario"]["id"]
+
+    res = client.get(f"/api/v1/scenarios/{scenario_id}/export")
+    assert res.status_code == 200
+    assert f"Scenario: Named export ({scenario_id})" in res.text
+
+
 def test_delete_scenario_removes_owned_plans_but_keeps_baseline(client, baseline):
     body = _create(client, baseline, name="Disposable")
     scenario_id = body["scenario"]["id"]

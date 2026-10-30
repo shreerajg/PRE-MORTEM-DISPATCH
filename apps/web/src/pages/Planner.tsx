@@ -171,6 +171,7 @@ export default function Planner() {
                 <TableRow>
                   <TableHead>Plan</TableHead>
                   <TableHead>Solver</TableHead>
+                  <TableHead>Deadlines</TableHead>
                   <TableHead className="text-right">Fulfillment</TableHead>
                   <TableHead className="text-right">Unmet</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
@@ -185,6 +186,9 @@ export default function Planner() {
                     <TableCell className="text-xs">
                       {p.solver}
                       {p.solver_status ? ` · ${p.solver_status}` : ''}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {p.constraints?.respect_deadlines ? 'Enforced' : 'KPI only'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{((p.kpis?.fulfillment_rate ?? 0) * 100).toFixed(1)}%</TableCell>
                     <TableCell className="text-right tabular-nums">{Math.round(p.kpis?.unmet ?? 0)}</TableCell>

@@ -72,7 +72,13 @@ def run_sensitivity_sweep(
             }
         )
 
-    worst = max(points, key=lambda p: (p["unmet"], -p["fulfillment_rate"])) if points else None
+    # For shortages the worst point is the largest unmet quantity; for delays
+    # (where volume is preserved) it is the largest late exposure.
+    worst = (
+        max(points, key=lambda p: (p["unmet"], p["at_risk_units"], p["risk_score"]))
+        if points
+        else None
+    )
 
     return {
         "solver": base_result.solver,

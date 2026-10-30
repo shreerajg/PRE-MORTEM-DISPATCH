@@ -134,10 +134,21 @@ export default function DisruptionLab() {
   });
 
   const sweepConfig = SWEEP_CONFIG[type];
+  const sweepIsDelay = sweepConfig?.parameter === 'extra_days';
   const sweepMut = useMutation({
     mutationFn: () =>
       runSweep(baselineId, currentEvent(), sweepConfig!.parameter, sweepConfig!.values),
   });
+  const sweepWorst = sweepMut.data?.worst;
+  const sweepWorstText = sweepWorst
+    ? sweepIsDelay
+      ? `${sweepWorst.value}${sweepConfig?.unit ?? ''} → ${Math.round(
+          sweepWorst.at_risk_units,
+        ).toLocaleString()} units late`
+      : `${sweepWorst.value}${sweepConfig?.unit ?? ''} → ${(
+          sweepWorst.fulfillment_rate * 100
+        ).toFixed(1)}% fulfilled`
+    : null;
 
   // A sweep belongs to one configuration; editing it discards the old curve.
   React.useEffect(() => {
@@ -372,6 +383,9 @@ export default function DisruptionLab() {
             <CardDescription>
               Re-solve the disruption configured above across several {sweepConfig.label.toLowerCase()} values.
               Every point is computed; nothing is stored.
+              {sweepIsDelay
+                ? ' Delays preserve volume, so the curve tracks units that miss their deadlines.'
+                : ''}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -394,18 +408,24 @@ export default function DisruptionLab() {
               <div className="space-y-3">
                 <p className="text-xs text-slate-500">
                   Baseline {(sweepMut.data.baseline.fulfillment_rate * 100).toFixed(1)}% fulfilled
-                  {sweepMut.data.worst
-                    ? ` · worst case ${sweepMut.data.worst.value}${sweepConfig.unit} → ${(
-                        sweepMut.data.worst.fulfillment_rate * 100
-                      ).toFixed(1)}%`
-                    : ''}
+                  {sweepWorstText ? ` · worst case ${sweepWorstText}` : ''}
                 </p>
-                <div className="h-56 w-full">
+                <div
+                  className="h-56 w-full"
+                  role="img"
+                  aria-label={
+                    sweepIsDelay
+                      ? 'At-risk units by extra transit days'
+                      : 'Fulfillment by stock reduction'
+                  }
+                >
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       data={sweepMut.data.points.map((point) => ({
                         ...point,
-                        fulfillment: point.fulfillment_rate * 100,
+                        metric: sweepIsDelay
+                          ? point.at_risk_units
+                          : point.fulfillment_rate * 100,
                       }))}
                       margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
                     >
@@ -416,20 +436,26 @@ export default function DisruptionLab() {
                         tick={{ fontSize: 11 }}
                       />
                       <YAxis
-                        domain={[0, 100]}
-                        tickFormatter={(value) => `${value}%`}
+                        domain={sweepIsDelay ? [0, 'auto'] : [0, 100]}
+                        tickFormatter={(value) =>
+                          sweepIsDelay ? `${Math.round(Number(value))}` : `${value}%`
+                        }
                         tick={{ fontSize: 11 }}
                         width={38}
                       />
                       <Tooltip
-                        formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Fulfilled']}
+                        formatter={(value) =>
+                          sweepIsDelay
+                            ? [`${Math.round(Number(value)).toLocaleString()} units`, 'At risk']
+                            : [`${Number(value).toFixed(1)}%`, 'Fulfilled']
+                        }
                         labelFormatter={(value) =>
                           `${sweepConfig.label}: ${value}${sweepConfig.unit}`
                         }
                       />
                       <Line
                         type="monotone"
-                        dataKey="fulfillment"
+                        dataKey="metric"
                         stroke="#0f766e"
                         strokeWidth={2}
                         dot={{ r: 3 }}
@@ -441,8 +467,17 @@ export default function DisruptionLab() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>{sweepConfig.label}</TableHead>
-                      <TableHead className="text-right">Fulfilled</TableHead>
-                      <TableHead className="text-right">Unmet</TableHead>
+                      {sweepIsDelay ? (
+                        <>
+                          <TableHead className="text-right">At risk</TableHead>
+                          <TableHead className="text-right">Max late</TableHead>
+                        </>
+                      ) : (
+                        <>
+                          <TableHead className="text-right">Fulfilled</TableHead>
+                          <TableHead className="text-right">Unmet</TableHead>
+                        </>
+                      )}
                       <TableHead className="text-right">Cost</TableHead>
                       <TableHead>Dominant cause</TableHead>
                     </TableRow>
@@ -454,17 +489,34 @@ export default function DisruptionLab() {
                           {point.value}
                           {sweepConfig.unit}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {(point.fulfillment_rate * 100).toFixed(1)}%
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {Math.round(point.unmet).toLocaleString()}
-                        </TableCell>
+                        {sweepIsDelay ? (
+                          <>
+                            <TableCell className="text-right tabular-nums">
+                              {Math.round(point.at_risk_units).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {Math.round(point.max_late_days)} d
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="text-right tabular-nums">
+                              {(point.fulfillment_rate * 100).toFixed(1)}%
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {Math.round(point.unmet).toLocaleString()}
+                            </TableCell>
+                          </>
+                        )}
                         <TableCell className="text-right tabular-nums">
                           ${Math.round(point.total_cost).toLocaleString()}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary">{causeLabel(dominantCause(point.cause_counts))}</Badge>
+                          <Badge variant="secondary">
+                            {Object.keys(point.cause_counts).length
+                              ? causeLabel(dominantCause(point.cause_counts))
+                              : 'No gap'}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     ))}

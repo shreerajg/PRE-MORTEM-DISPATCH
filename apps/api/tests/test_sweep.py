@@ -64,6 +64,10 @@ def test_delay_sweep_keeps_volume_and_raises_lateness(client, baseline):
     at_risk = [p["at_risk_units"] for p in points]
     assert all(a <= b + 1e-9 for a, b in zip(at_risk, at_risk[1:]))
     assert points[-1]["max_late_days"] > 0
+    # For a delay sweep the worst case is the latest exposure, not the first point
+    # just because every point has zero unmet volume.
+    assert res.json()["worst"]["value"] == 8.0
+    assert res.json()["worst"]["at_risk_units"] == points[-1]["at_risk_units"]
 
 
 def test_sweep_validation(client, baseline):

@@ -122,6 +122,14 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByText('Stock reduction').first()).toBeVisible();
     await expect(page.getByText(/Ephemeral analysis/)).toBeVisible();
     await expect(page.locator('.recharts-surface').first()).toBeVisible();
+
+    // Delays keep volume, so the sweep must chart lateness instead of fulfilment.
+    await page.getByLabel('Disruption type').selectOption('route_delay');
+    await page.getByLabel('Route').selectOption('RT-06');
+    await page.getByRole('button', { name: /run sensitivity sweep/i }).click();
+    await expect(page.getByText(/Delays preserve volume/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('At risk').first()).toBeVisible();
+    await expect(page.getByText(/worst case 8d/)).toBeVisible({ timeout: 20_000 });
   });
 
   test('named scenario can be deleted without touching the baseline', async ({ page }) => {

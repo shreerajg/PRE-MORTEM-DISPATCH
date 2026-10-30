@@ -105,6 +105,10 @@ def test_plan_endpoint_enforces_and_scenarios_inherit_the_policy(client):
     fetched = client.get(f"/api/v1/plans/{body['id']}").json()
     assert fetched["constraints"] == {"respect_deadlines": True}
 
+    listed = client.get("/api/v1/plans/", params={"limit": 100}).json()["plans"]
+    listed_row = next(plan for plan in listed if plan["id"] == body["id"])
+    assert listed_row["constraints"] == {"respect_deadlines": True}
+
     scen = client.post(
         "/api/v1/scenarios",
         json={

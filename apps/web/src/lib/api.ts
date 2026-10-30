@@ -207,6 +207,7 @@ export type PlanSummary = {
   solver_status?: string | null;
   created_at: string;
   kpis: KPISnapshot;
+  constraints?: { respect_deadlines?: boolean };
   allocation_count: number;
   unmet_count: number;
 };

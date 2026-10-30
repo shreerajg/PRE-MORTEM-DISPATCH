@@ -19,9 +19,14 @@ def export_scenario_csv(scenario, plans) -> bytes:
     # Normalize scenario
     if isinstance(scenario, dict):
         scen_id = scenario.get("id", "scenario")
+        scen_name = scenario.get("name")
     else:
         scen_id = getattr(scenario, "id", "scenario")
-    writer.writerow([f"Scenario: {scen_id}"])
+        scen_name = getattr(scenario, "name", None)
+    if scen_name:
+        writer.writerow([f"Scenario: {scen_name} ({scen_id})"])
+    else:
+        writer.writerow([f"Scenario: {scen_id}"])
     writer.writerow([])
 
     # Normalize plans to list
