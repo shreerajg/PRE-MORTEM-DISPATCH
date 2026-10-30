@@ -47,8 +47,9 @@ limiting destination×product rows. It never reports a success it cannot compute
 - **Named, disposable scenarios** — name a run, rename it, and delete it together with its
   disrupted/recovered plans. The baseline plan is never deleted.
 - **Severity sweeps** — for stock shortages and lane delays, re-solve 2–7 severity points
-  against the same baseline, chart fulfilment/unmet/cost, and name the dominant cause at each
-  point. Sweeps are ephemeral: no scenario or plan is stored.
+  against the same baseline. Shortage curves chart fulfilment and unmet units; delay curves
+  chart deadline exposure, because volume stays at 100%. Each point names its dominant cause,
+  and no scenario or plan is stored.
 
 ### Screens
 
@@ -116,7 +117,7 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 82 passed
+python -m pytest apps/api/tests -q          # 83 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build

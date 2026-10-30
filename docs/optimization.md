@@ -113,7 +113,8 @@ independent solve — the curve is not interpolated, and no scenario is stored.
 
 - Shortage sweeps trace how fulfilment and unmet units degrade as stock falls.
 - Delay sweeps keep volume constant (delays do not remove capacity) and trace
-  deadline exposure instead; the UI shows both series' consequences per point.
+  deadline exposure instead; the UI charts at-risk units and maximum lateness, and
+  the "worst" point is chosen by unmet volume first, then late exposure.
 - Each point also aggregates the unmet causes, so the dominant binding constraint
   at that severity is visible next to the number.
 

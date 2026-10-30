@@ -125,10 +125,11 @@ used, `diagnostics.fallback` is `"greedy"` and `fallback_reason` names the cause
 
 ### `GET /plans/`
 `?limit=25&offset=0&plan_type=baseline` →
-`{ "plans": [{ "id", "type", "solver_status", "kpis", "allocation_count", ... }], "total": n, "limit": n, "offset": n }`.
+`{ "plans": [{ "id", "type", "solver_status", "kpis", "constraints", "allocation_count", ... }], "total": n, "limit": n, "offset": n }`.
 `total` is the true table count (after the type filter), not the page size. The type
 filter is applied before `limit`, so `limit=1&plan_type=baseline` is never
-emptied by newer plans of another type.
+emptied by newer plans of another type. `constraints` reports the planning policy
+(for example `{"respect_deadlines": true}`) so pickers can show it without a detail fetch.
 
 ### `GET /plans/{id}`
 Same shape as the create response, including `solver_status`, `constraints` and
@@ -226,10 +227,13 @@ Response (points sorted by value; `cause_counts` aggregates `unmet_diagnosis`):
       "risk_score": 16.6, "at_risk_units": 0, "max_late_days": 0,
       "cause_counts": {}, "unmet_rows": 0 }
   ],
-  "worst": { "...": "the point with the largest unmet quantity" },
+  "worst": { "...": "the point with the largest unmet quantity; for delay sweeps, the largest late exposure" },
   "note": "Ephemeral analysis: each point re-solves the same network; nothing is stored."
 }
 ```
+
+For `route_delay`, fulfilment stays at 1.0 by design; use `at_risk_units` and
+`max_late_days` to read the curve.
 
 Errors: `400` for an unsupported type/parameter pair, fewer than 2 or more than 7
 distinct values, values out of range, or a plan that is not a baseline; `404` for an
@@ -294,9 +298,9 @@ remaining gap after recovery (for example `contingency_only` or `deadline_blocke
 ### `GET /scenarios/{id}/export`
 `text/csv; charset=utf-8` with `Content-Disposition: attachment; filename="pre-mortem-scenario-xxxxxxxx.csv"`.
 
-Structure: `Scenario: <id>` then one block per plan (`Plan: <id> (<type>)`) containing
-`Allocations`, `Unmet`, and `KPIs` sections. Values are the stored computed plan — nothing is
-recomputed at export time.
+Structure: `Scenario: <name> (<id>)` (or `Scenario: <id>` when unnamed), then one block per
+plan (`Plan: <id> (<type>)`) containing `Allocations`, `Unmet`, and `KPIs` sections.
+Values are the stored computed plan — nothing is recomputed at export time.
 
 ---
 
