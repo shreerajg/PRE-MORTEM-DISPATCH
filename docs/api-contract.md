@@ -191,6 +191,50 @@ stays apples-to-apples.
 `?limit=25&offset=0` → `{ "scenarios": [...], "total": n, "limit": n, "offset": n }` with
 `kpis.{baseline,disrupted,recovered}`. `total` is the true table count, not the page size.
 
+### `POST /scenarios/sweep`
+
+Re-solves the same baseline at 2–7 severity values for one disruption. The
+response is computed on demand and **nothing is stored**. Supported pairs:
+
+| Disruption | Parameter | Range |
+|---|---|---|
+| `inventory_shortage` | `reduction_pct` | 0–100 (%) |
+| `route_delay` | `extra_days` | 0–60 (days) |
+
+```json
+{
+  "baseline_plan_id": "uuid",
+  "disruption": { "type": "inventory_shortage",
+                  "params": { "warehouse_id": "WH-02", "product_id": "PRD-A" } },
+  "parameter": "reduction_pct",
+  "values": [25, 50, 75, 100]
+}
+```
+
+Response (points sorted by value; `cause_counts` aggregates `unmet_diagnosis`):
+
+```json
+{
+  "baseline_plan_id": "uuid",
+  "parameter": "reduction_pct",
+  "disruption": { "...": "template event" },
+  "respect_deadlines": false,
+  "solver": "greedy",
+  "baseline": { "fulfillment_rate": 1.0, "unmet": 0, "total_cost": 24240 },
+  "points": [
+    { "value": 25, "fulfillment_rate": 1.0, "unmet": 0, "total_cost": 24240,
+      "risk_score": 16.6, "at_risk_units": 0, "max_late_days": 0,
+      "cause_counts": {}, "unmet_rows": 0 }
+  ],
+  "worst": { "...": "the point with the largest unmet quantity" },
+  "note": "Ephemeral analysis: each point re-solves the same network; nothing is stored."
+}
+```
+
+Errors: `400` for an unsupported type/parameter pair, fewer than 2 or more than 7
+distinct values, values out of range, or a plan that is not a baseline; `404` for an
+unknown plan or dataset.
+
 ### `GET /scenarios/{id}`
 `{ "scenario": {...}, "baseline_plan": {...}, "disrupted_plan": {...}, "recovered_plan": {...}|null }`
 

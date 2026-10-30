@@ -46,6 +46,9 @@ limiting destination×product rows. It never reports a success it cannot compute
   earlier demand. The badge tooltip shows the supporting numbers.
 - **Named, disposable scenarios** — name a run, rename it, and delete it together with its
   disrupted/recovered plans. The baseline plan is never deleted.
+- **Severity sweeps** — for stock shortages and lane delays, re-solve 2–7 severity points
+  against the same baseline, chart fulfilment/unmet/cost, and name the dominant cause at each
+  point. Sweeps are ephemeral: no scenario or plan is stored.
 
 ### Screens
 
@@ -113,13 +116,13 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 78 passed
+python -m pytest apps/api/tests -q          # 82 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
 # Browser E2E (needs both servers running)
-cd apps/web && npx playwright test          # 9 passed
+cd apps/web && npx playwright test          # 10 passed
 ```
 
 The suite asserts invariants, not just "it returned 200":
@@ -136,6 +139,7 @@ The suite asserts invariants, not just "it returned 200":
 - compound events apply in order; repeated shortages compound, repeated closures do not
 - every unmet row carries a cause whose evidence matches the computed plan
 - deleting a scenario removes its own plans but never the baseline
+- a severity sweep is monotonic for shortages, preserves volume for delays, and persists nothing
 - hard deadline mode leaves late-only demand unmet; the default reports lateness as a KPI
 - scenarios inherit the baseline's deadline policy
 - concurrent SQLite writers wait for the lock instead of failing (WAL + busy timeout)

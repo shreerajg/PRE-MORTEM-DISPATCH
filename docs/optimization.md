@@ -105,6 +105,18 @@ sequentially to deep copies, so the solver sees one final input set:
 
 The ordering is part of the scenario record and is replayed identically by recovery.
 
+## Sensitivity sweeps
+
+A sweep repeats the disrupted solve for one numeric parameter (`reduction_pct`
+for shortages, `extra_days` for delays) at 2–7 values. Each point is a full,
+independent solve — the curve is not interpolated, and no scenario is stored.
+
+- Shortage sweeps trace how fulfilment and unmet units degrade as stock falls.
+- Delay sweeps keep volume constant (delays do not remove capacity) and trace
+  deadline exposure instead; the UI shows both series' consequences per point.
+- Each point also aggregates the unmet causes, so the dominant binding constraint
+  at that severity is visible next to the number.
+
 ## Documented assumptions
 
 1. **Route delay does not change capacity.** It raises `time_days`, which feeds the delivery-risk

@@ -50,6 +50,7 @@ the whole history.
 | `services/disruption.py` | Mutating planning inputs on copies | Mutate the caller's objects |
 | `services/diagnosis.py` | Explain every unmet row from the inputs + result | Change feasibility or invent causes |
 | `services/recovery.py` | Recovery re-plan and allocation diff | Claim success when infeasible |
+| `services/sensitivity.py` | Severity sweeps over one disruption | Persist results or change policy |
 | `services/kpi.py` | KPI + delivery-risk + risk score | Depend on persistence |
 | `services/normalize.py` | CSV row → typed domain object | Silently drop rows |
 | `services/validation.py` | CSV parsing + schema/referential checks | Persist anything |
@@ -132,6 +133,9 @@ sequenceDiagram
 10. **Safe deletion.** Deleting a scenario removes only the disrupted/recovered plans it owns in
     one transaction; the baseline plan always survives. Verified by
     `test_delete_scenario_removes_owned_plans_but_keeps_baseline`.
+11. **Ephemeral sweeps.** A sensitivity sweep re-solves the same network at each severity with
+    the baseline's solver and deadline policy, and writes nothing to the database. Verified by
+    `test_shortage_sweep_degrades_fulfillment_and_stores_nothing`.
 
 ## 5. Recovery model
 
