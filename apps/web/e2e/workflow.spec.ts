@@ -107,6 +107,23 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     ).toBeVisible({ timeout: 20_000 });
   });
 
+  test('sensitivity sweep re-solves a severity range', async ({ page }) => {
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/planner');
+    await page.getByRole('button', { name: /generate baseline/i }).click();
+    await expect(page.getByText(/Baseline plan created/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/disruption');
+    await page.getByRole('button', { name: /run sensitivity sweep/i }).click();
+    await expect(page.getByText(/Baseline 100\.0% fulfilled/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Stock reduction').first()).toBeVisible();
+    await expect(page.getByText(/Ephemeral analysis/)).toBeVisible();
+    await expect(page.locator('.recharts-surface').first()).toBeVisible();
+  });
+
   test('named scenario can be deleted without touching the baseline', async ({ page }) => {
     const scenarioName = `E2E named ${Date.now()}`;
 
@@ -129,9 +146,14 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByLabel('Scenario', { exact: true })).toContainText(scenarioName);
     await expect(page.getByText(`Scenario ${scenarioName}`)).toBeVisible();
 
+    const renamed = `${scenarioName} renamed`;
+    page.once('dialog', (dialog) => dialog.accept(renamed));
+    await page.getByRole('button', { name: 'Rename scenario' }).click();
+    await expect(page.getByLabel('Scenario', { exact: true })).toContainText(renamed);
+
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Delete scenario' }).click();
-    await expect(page.getByLabel('Scenario', { exact: true })).not.toContainText(scenarioName);
+    await expect(page.getByLabel('Scenario', { exact: true })).not.toContainText(renamed);
   });
 
   test('empty states explain what to do next', async ({ page }) => {

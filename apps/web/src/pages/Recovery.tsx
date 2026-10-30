@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HeartPulse, AlertTriangle, ArrowRight, CheckCircle2, Wrench, RefreshCw, Trash2 } from 'lucide-react';
+import { HeartPulse, AlertTriangle, ArrowRight, CheckCircle2, Wrench, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -8,7 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { CauseBadge } from '../components/CauseBadge';
-import { compareScenario, deleteScenario, getScenario, listScenarios, recoverScenario, type KPISnapshot, type RecoveryAction, type ScenarioSummary, type UnmetDemand, type UnmetDiagnosis } from '../lib/api';
+import { compareScenario, deleteScenario, getScenario, listScenarios, recoverScenario, renameScenario, type KPISnapshot, type RecoveryAction, type ScenarioSummary, type UnmetDemand, type UnmetDiagnosis } from '../lib/api';
 import { disruptionLabel, scenarioTitle } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
@@ -59,6 +59,18 @@ export default function Recovery() {
       qc.invalidateQueries({ queryKey: ['scenarios'] });
     },
   });
+
+  const renameMut = useMutation({
+    mutationFn: (name: string) => renameScenario(sid, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['scenarios'] }),
+  });
+
+  const onRename = () => {
+    if (!sid) return;
+    const current = scenarios.find((s) => s.id === sid)?.name ?? '';
+    const next = window.prompt('Rename scenario', current);
+    if (next?.trim()) renameMut.mutate(next.trim());
+  };
 
   const onDelete = () => {
     if (!sid) return;
@@ -160,6 +172,15 @@ export default function Recovery() {
               </Button>
               <Button
                 variant="outline"
+                onClick={onRename}
+                disabled={!sid || renameMut.isPending}
+                aria-label="Rename scenario"
+                title="Rename this scenario"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
                 onClick={onDelete}
                 disabled={!sid || deleteMut.isPending}
                 aria-label="Delete scenario"
@@ -196,6 +217,11 @@ export default function Recovery() {
           {deleteMut.isError ? (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {String((deleteMut.error as Error).message)}
+            </div>
+          ) : null}
+          {renameMut.isError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {String((renameMut.error as Error).message)}
             </div>
           ) : null}
         </CardContent>

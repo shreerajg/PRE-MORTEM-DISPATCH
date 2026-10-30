@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,7 @@ from app.services.kpi import compute_delivery_risk, compute_kpis
 from app.services.normalize import build_network, load_deadlines, load_destinations
 from app.services.recovery import recover_allocation
 from app.services.reporting import export_scenario_csv
+from app.services.sensitivity import run_sensitivity_sweep
 
 router = APIRouter(prefix="/api/v1/scenarios", tags=["scenarios"])
 
@@ -223,6 +225,96 @@ def create_scenario(body: ScenarioCreate):
     }
 
     return {"scenario": {"id": scenario_id, "name": scenario_name, "baseline_plan_id": body.baseline_plan_id, "disruption": disruption_dict, "disrupted_plan_id": disrupted_plan_id, "status": "disrupted", "created_at": created_at}, "disrupted_plan": {"id": disrupted_plan_id, "dataset_id": dataset_id, "type": "disrupted", "status": "completed", "solver": disrupted_result.solver, "solver_status": disrupted_result.status, "created_at": created_at, "allocations": disrupted_data["allocations"], "unmet": disrupted_data["unmet"], "kpis": disrupted_data["kpis"], "unmet_diagnosis": disrupted_diagnosis}, "impact": impact}
+
+
+_SWEEP_RULES = {
+    "inventory_shortage": ("reduction_pct", 100.0, "%"),
+    "route_delay": ("extra_days", 60.0, "days"),
+}
+
+
+class SweepRequest(BaseModel):
+    baseline_plan_id: str
+    disruption: DisruptionRequest
+    parameter: str
+    values: List[float]
+
+
+@router.post("/sweep")
+def sweep_scenario(body: SweepRequest):
+    """Re-solve one disruption at several severities; the result is not stored."""
+    if body.disruption.type not in _SWEEP_RULES:
+        raise HTTPException(
+            status_code=400,
+            detail="Sensitivity sweeps support inventory_shortage and route_delay only",
+        )
+    expected, upper, unit = _SWEEP_RULES[body.disruption.type]
+    if body.parameter != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{body.disruption.type} varies '{expected}', not '{body.parameter}'",
+        )
+
+    values = sorted({round(float(value), 4) for value in body.values})
+    if not 2 <= len(values) <= 7:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide between 2 and 7 distinct severity values",
+        )
+    if any((not math.isfinite(value)) or value < 0 or value > upper for value in values):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Values must be finite and between 0 and {upper:g} {unit}",
+        )
+
+    baseline_plan = db.get_plan(body.baseline_plan_id)
+    if not baseline_plan:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Baseline plan {body.baseline_plan_id} not found",
+        )
+    if baseline_plan.get("type") != "baseline":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan {body.baseline_plan_id} is a '{baseline_plan.get('type')}' plan; sweeps require a baseline plan",
+        )
+    dataset = db.get_dataset(baseline_plan["dataset_id"])
+    if not dataset:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dataset {baseline_plan['dataset_id']} not found",
+        )
+
+    data = baseline_plan.get("data", {}) or {}
+    respect_deadlines = bool(
+        (data.get("constraints") or {}).get("respect_deadlines", False)
+    )
+    solver = baseline_plan.get("solver")
+    if solver not in ("greedy", "ortools", "auto"):
+        solver = None
+
+    try:
+        sweep = run_sensitivity_sweep(
+            dataset.get("meta", {}),
+            body.disruption,
+            body.parameter,
+            values,
+            respect_deadlines=respect_deadlines,
+            solver=solver,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sweep failed: {e}")
+
+    return {
+        "baseline_plan_id": body.baseline_plan_id,
+        "parameter": body.parameter,
+        "disruption": body.disruption.model_dump(),
+        "respect_deadlines": respect_deadlines,
+        **sweep,
+        "note": "Ephemeral analysis: each point re-solves the same network; nothing is stored.",
+    }
 
 
 @router.get("/{scenario_id}")

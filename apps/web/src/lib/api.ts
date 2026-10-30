@@ -93,6 +93,30 @@ export type UnmetDiagnosis = {
   evidence: Record<string, unknown>;
 };
 
+export type SweepPoint = {
+  value: number;
+  fulfillment_rate: number;
+  unmet: number;
+  total_cost: number;
+  risk_score: number;
+  at_risk_units: number;
+  max_late_days: number;
+  cause_counts: Record<string, number>;
+  unmet_rows: number;
+};
+
+export type SweepResponse = {
+  baseline_plan_id: string;
+  parameter: string;
+  disruption: DisruptionRequest;
+  respect_deadlines: boolean;
+  solver: string;
+  baseline: { fulfillment_rate: number; unmet: number; total_cost: number };
+  points: SweepPoint[];
+  worst: SweepPoint | null;
+  note: string;
+};
+
 export type PlanResponse = {
   id: string;
   dataset_id: string;
@@ -416,6 +440,24 @@ export async function deleteScenario(
   id: string,
 ): Promise<{ deleted: boolean; deleted_plan_ids: string[] }> {
   return request(`/api/v1/scenarios/${id}`, { method: 'DELETE' });
+}
+
+export async function runSweep(
+  baselinePlanId: string,
+  disruption: DisruptionRequest,
+  parameter: string,
+  values: number[],
+): Promise<SweepResponse> {
+  return request<SweepResponse>('/api/v1/scenarios/sweep', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      baseline_plan_id: baselinePlanId,
+      disruption,
+      parameter,
+      values,
+    }),
+  });
 }
 
 export async function getScenario(id: string): Promise<ScenarioDetail> {

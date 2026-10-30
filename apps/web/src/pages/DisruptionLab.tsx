@@ -1,19 +1,37 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Zap, TrendingDown, TrendingUp, FlaskConical, ArrowRight, Clock, Info, Plus, X } from 'lucide-react';
+import { Zap, TrendingDown, TrendingUp, FlaskConical, ArrowRight, Clock, Info, Plus, X, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { CauseBadge } from '../components/CauseBadge';
-import { createScenario, getDataset, listPlans, type DisruptionRequest, type ImpactSummary, type PlanResponse, type UnmetDiagnosis } from '../lib/api';
+import { causeLabel, CauseBadge } from '../components/CauseBadge';
+import { createScenario, getDataset, listPlans, runSweep, type DisruptionRequest, type ImpactSummary, type PlanResponse, type UnmetDiagnosis } from '../lib/api';
 import { solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const MAX_EVENTS = 5;
+
+type SweepConfig = { parameter: 'reduction_pct' | 'extra_days'; values: number[]; label: string; unit: string };
+
+const SWEEP_CONFIG: Partial<Record<DisruptionType, SweepConfig>> = {
+  inventory_shortage: {
+    parameter: 'reduction_pct',
+    values: [25, 50, 75, 100],
+    label: 'Stock reduction',
+    unit: '%',
+  },
+  route_delay: {
+    parameter: 'extra_days',
+    values: [2, 4, 6, 8],
+    label: 'Extra transit days',
+    unit: 'd',
+  },
+};
 
 type DisruptionType = 'inventory_shortage' | 'route_closure' | 'route_delay' | 'supply_interruption';
 
@@ -114,6 +132,18 @@ export default function DisruptionLab() {
       qc.invalidateQueries({ queryKey: ['scenarios'] });
     },
   });
+
+  const sweepConfig = SWEEP_CONFIG[type];
+  const sweepMut = useMutation({
+    mutationFn: () =>
+      runSweep(baselineId, currentEvent(), sweepConfig!.parameter, sweepConfig!.values),
+  });
+
+  // A sweep belongs to one configuration; editing it discards the old curve.
+  React.useEffect(() => {
+    sweepMut.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, baselineId, warehouseId, productId, routeId, reductionPct, extraDays]);
 
   const disrupted: PlanResponse | undefined = createMut.data?.disrupted_plan;
   const impact: ImpactSummary | undefined = createMut.data?.impact;
@@ -333,6 +363,120 @@ export default function DisruptionLab() {
         </CardContent>
       </Card>
 
+      {sweepConfig ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-4 w-4" /> Sensitivity sweep
+            </CardTitle>
+            <CardDescription>
+              Re-solve the disruption configured above across several {sweepConfig.label.toLowerCase()} values.
+              Every point is computed; nothing is stored.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => sweepMut.mutate()} disabled={!baselineId || sweepMut.isPending}>
+                {sweepMut.isPending ? 'Solving points…' : 'Run sensitivity sweep'}
+              </Button>
+              <span className="text-xs text-slate-500">
+                {sweepConfig.values.map((value) => `${value}${sweepConfig.unit}`).join(' · ')}
+              </span>
+            </div>
+
+            {sweepMut.isError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {String((sweepMut.error as Error).message)}
+              </div>
+            ) : null}
+
+            {sweepMut.data ? (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500">
+                  Baseline {(sweepMut.data.baseline.fulfillment_rate * 100).toFixed(1)}% fulfilled
+                  {sweepMut.data.worst
+                    ? ` · worst case ${sweepMut.data.worst.value}${sweepConfig.unit} → ${(
+                        sweepMut.data.worst.fulfillment_rate * 100
+                      ).toFixed(1)}%`
+                    : ''}
+                </p>
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={sweepMut.data.points.map((point) => ({
+                        ...point,
+                        fulfillment: point.fulfillment_rate * 100,
+                      }))}
+                      margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="value"
+                        tickFormatter={(value) => `${value}${sweepConfig.unit}`}
+                        tick={{ fontSize: 11 }}
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        tickFormatter={(value) => `${value}%`}
+                        tick={{ fontSize: 11 }}
+                        width={38}
+                      />
+                      <Tooltip
+                        formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Fulfilled']}
+                        labelFormatter={(value) =>
+                          `${sweepConfig.label}: ${value}${sweepConfig.unit}`
+                        }
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="fulfillment"
+                        stroke="#0f766e"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{sweepConfig.label}</TableHead>
+                      <TableHead className="text-right">Fulfilled</TableHead>
+                      <TableHead className="text-right">Unmet</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead>Dominant cause</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sweepMut.data.points.map((point) => (
+                      <TableRow key={point.value}>
+                        <TableCell className="font-mono text-xs">
+                          {point.value}
+                          {sweepConfig.unit}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {(point.fulfillment_rate * 100).toFixed(1)}%
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {Math.round(point.unmet).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          ${Math.round(point.total_cost).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{causeLabel(dominantCause(point.cause_counts))}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <p className="text-xs text-slate-500">{sweepMut.data.note}</p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {disrupted && impact ? (
         <>
           <div className="grid gap-3 md:grid-cols-4">
@@ -509,6 +653,12 @@ function ImpactCard({ label, value, negative }: { label: string; value: string; 
       </CardContent>
     </Card>
   );
+}
+
+function dominantCause(counts: Record<string, number>): string | undefined {
+  const entries = Object.entries(counts);
+  if (!entries.length) return undefined;
+  return entries.sort((a, b) => b[1] - a[1])[0][0];
 }
 
 function describeDisruption(event: DisruptionRequest): string {

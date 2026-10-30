@@ -14,6 +14,11 @@ const LABELS: Record<string, string> = {
   combined: 'Combined limits',
 };
 
+export function causeLabel(cause?: string): string {
+  if (!cause) return '—';
+  return LABELS[cause] ?? cause.replace(/_/g, ' ');
+}
+
 export function CauseBadge({ diagnosis }: { diagnosis?: UnmetDiagnosis }) {
   if (!diagnosis) return <span className="text-xs text-slate-400">—</span>;
 
@@ -28,7 +33,7 @@ export function CauseBadge({ diagnosis }: { diagnosis?: UnmetDiagnosis }) {
 
   return (
     <span title={diagnosis.explanation} className="cursor-help">
-      <Badge variant={variant}>{LABELS[diagnosis.cause] ?? diagnosis.cause.replace(/_/g, ' ')}</Badge>
+      <Badge variant={variant}>{causeLabel(diagnosis.cause)}</Badge>
     </span>
   );
 }
