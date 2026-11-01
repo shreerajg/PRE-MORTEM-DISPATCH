@@ -15,7 +15,21 @@ const Compare = lazy(() => import('./pages/Compare'));
 const Exports = lazy(() => import('./pages/Exports'));
 
 function PageFallback() {
-  return <div className="p-8 text-sm text-slate-500">Loading…</div>;
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Loading page">
+      <div className="space-y-3">
+        <div className="h-3 w-32 animate-pulse rounded bg-slate-900/[0.06]" />
+        <div className="h-7 w-64 animate-pulse rounded-lg bg-slate-900/[0.07]" />
+        <div className="h-3 w-96 max-w-full animate-pulse rounded bg-slate-900/[0.05]" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-24 animate-pulse rounded-2xl border border-slate-900/[0.05] bg-white" />
+        ))}
+      </div>
+      <div className="h-72 animate-pulse rounded-2xl border border-slate-900/[0.05] bg-white" />
+    </div>
+  );
 }
 
 export default function App() {

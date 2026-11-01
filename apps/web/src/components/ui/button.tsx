@@ -5,16 +5,18 @@ type Variant = 'default' | 'outline' | 'ghost' | 'destructive';
 type Size = 'sm' | 'default' | 'lg' | 'icon';
 
 const variantClasses: Record<Variant, string> = {
-  default: 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm',
-  outline: 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-900',
-  ghost: 'hover:bg-slate-100 text-slate-700',
-  destructive: 'bg-red-600 text-white hover:bg-red-700',
+  default:
+    'bg-slate-900 text-white hover:bg-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_10px_24px_-16px_rgba(15,23,42,0.6)]',
+  outline:
+    'border border-slate-300/80 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50 shadow-[0_1px_2px_rgba(16,24,40,0.04)]',
+  ghost: 'text-slate-600 hover:bg-slate-900/[0.05] hover:text-slate-900',
+  destructive: 'bg-red-600 text-white hover:bg-red-700 shadow-sm',
 };
 
 const sizeClasses: Record<Size, string> = {
-  sm: 'h-8 px-3 text-xs',
-  default: 'h-9 px-4 py-2 text-sm',
-  lg: 'h-10 px-6 text-sm',
+  sm: 'h-8 gap-1.5 px-3 text-xs',
+  default: 'h-9 gap-2 px-4 text-[13px]',
+  lg: 'h-10 gap-2 px-5 text-sm',
   icon: 'h-9 w-9',
 };
 
@@ -30,7 +32,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:opacity-50 disabled:pointer-events-none',
+          'inline-flex select-none items-center justify-center rounded-lg font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-900/10 active:translate-y-px disabled:pointer-events-none disabled:opacity-50',
           variantClasses[variant],
           sizeClasses[size],
           className,

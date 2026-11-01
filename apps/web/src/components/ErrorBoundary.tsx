@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { ShieldAlert } from 'lucide-react';
 
 type Props = { children: React.ReactNode };
 type State = { error: Error | null };
@@ -23,31 +24,40 @@ export class ErrorBoundary extends React.Component<Props, State> {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-        <div className="w-full max-w-xl rounded-lg border border-red-200 bg-white p-6 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-red-600">Console error</div>
-          <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">Something broke on this screen</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Plans and scenarios live on the server, so nothing was lost. Reload to continue, or return to the
-            overview.
-          </p>
-          <pre className="mt-4 max-h-40 overflow-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">
-            {this.state.error.message}
-          </pre>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="inline-flex items-center rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700"
-            >
-              Reload console
-            </button>
-            <a
-              href="/"
-              className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Back to overview
-            </a>
+      <div className="flex min-h-screen items-center justify-center bg-paper p-6">
+        <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-red-600/15 bg-white shadow-lift">
+          <div className="border-b border-red-600/10 bg-red-50/60 p-6">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-600/15 bg-white text-red-600">
+              <ShieldAlert className="h-5 w-5" />
+            </div>
+            <div className="mt-4 font-mono text-[9.5px] uppercase tracking-[0.2em] text-red-600">Console error</div>
+            <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900">
+              Something broke on this screen
+            </h1>
+          </div>
+          <div className="p-6">
+            <p className="text-[13px] leading-relaxed text-slate-600">
+              Plans and scenarios live on the server, so nothing was lost. Reload to continue, or return to the
+              overview.
+            </p>
+            <pre className="mt-4 max-h-40 overflow-auto rounded-xl border border-white/[0.06] bg-ink-900 p-3 font-mono text-[11.5px] text-slate-100">
+              {this.state.error.message}
+            </pre>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center rounded-lg bg-slate-900 px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-slate-800"
+              >
+                Reload console
+              </button>
+              <a
+                href="/"
+                className="inline-flex items-center rounded-lg border border-slate-300/80 bg-white px-3.5 py-2 text-[13px] font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50"
+              >
+                Back to overview
+              </a>
+            </div>
           </div>
         </div>
       </div>

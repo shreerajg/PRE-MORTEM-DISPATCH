@@ -3,14 +3,19 @@ import { cn } from '../../lib/utils';
 
 export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-auto rounded-lg border">
+    <div className="w-full overflow-auto rounded-xl border border-slate-900/[0.07] bg-white">
       <table className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   );
 }
 
 export function TableHeader({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('[&_tr]:border-b bg-slate-50', className)} {...props} />;
+  return (
+    <thead
+      className={cn('[&_tr]:border-b [&_tr]:border-slate-900/[0.06] bg-slate-50/70', className)}
+      {...props}
+    />
+  );
 }
 
 export function TableBody({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
@@ -18,15 +23,31 @@ export function TableBody({ className, ...props }: React.HTMLAttributes<HTMLTabl
 }
 
 export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn('border-b transition-colors hover:bg-slate-50', className)} {...props} />;
+  return (
+    <tr
+      className={cn(
+        'border-b border-slate-900/[0.05] transition-colors last:border-0 hover:bg-emerald-50/30',
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn('h-9 px-3 text-left text-xs font-semibold text-slate-600', className)} {...props} />;
+  return (
+    <th
+      className={cn(
+        'h-9 px-3 text-left font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400',
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function TableCell({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn('p-3 align-middle text-sm', className)} {...props} />;
+  return <td className={cn('px-3 py-2.5 align-middle text-[13px]', className)} {...props} />;
 }
 
 export function TableCaption({ className, ...props }: React.HTMLAttributes<HTMLTableCaptionElement>) {
