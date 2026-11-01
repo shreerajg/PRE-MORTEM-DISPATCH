@@ -1,7 +1,18 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  CartesianGrid,
+} from 'recharts';
 import {
   Package,
   FileText,
@@ -9,20 +20,24 @@ import {
   AlertTriangle,
   DollarSign,
   Gauge,
-  Activity,
-  ArrowRight,
   Zap,
   Clock,
+  ArrowRight,
+  ArrowUpRight,
+  Database,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { PageHeader } from '../components/PageHeader';
+import { Stat } from '../components/Stat';
+import { EmptyState } from '../components/EmptyState';
+import { PlanJourney } from '../components/PlanJourney';
+import { ChartTooltip } from '../components/ChartTooltip';
 import { health, getPlan, listPlans, listScenarios } from '../lib/api';
 import { disruptionLabel, scenarioTitle, solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
-
-const PIE_COLORS = ['#0f172a', '#f87171'];
 
 export default function Dashboard() {
   const { planId, setPlanId } = useAppStore();
@@ -47,6 +62,7 @@ export default function Dashboard() {
 
   const kpis = plan?.kpis;
   const scenarios = scenarioData?.scenarios ?? [];
+  const latest = scenarios[0];
 
   const utilizationData = kpis
     ? [
@@ -66,246 +82,380 @@ export default function Dashboard() {
   const hasPlan = !!kpis;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Operations Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Baseline network health, fulfillment and capacity — recalculated from the active plan.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {plan ? (
+    <div className="space-y-7">
+      <PageHeader
+        eyebrow="Operations · baseline health"
+        title="Operations Dashboard"
+        description="Baseline network health, fulfillment and capacity — recalculated from the active plan."
+        actions={
+          hasPlan ? (
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/planner">Open planner</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link to="/disruption">
+                  <Zap className="h-3.5 w-3.5" />
+                  Simulate disruption
+                </Link>
+              </Button>
+            </>
+          ) : null
+        }
+        meta={
+          plan ? (
             <Badge variant={solverStatusTone(plan.solver_status, plan.kpis?.unmet)}>
               Plan {plan.id.slice(0, 8)} · {plan.solver}
               {plan.solver_status ? ` · ${plan.solver_status}` : ''}
             </Badge>
-          ) : null}
-        </div>
-      </div>
+          ) : h ? (
+            <Badge variant="outline">Engine {h.solver}</Badge>
+          ) : null
+        }
+      />
 
       {!hasPlan ? (
-        <Card className="border-dashed">
-          <CardContent className="p-8 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-              <Package className="h-6 w-6 text-slate-500" />
-            </div>
-            <h3 className="mt-4 text-base font-semibold">No baseline plan yet</h3>
-            <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-              Load the sample dataset, generate a baseline allocation, then simulate a disruption and recover from it.
-            </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <EmptyState
+          icon={Package}
+          title="No baseline plan yet"
+          description="Load the sample dataset, generate a baseline allocation, then simulate a disruption and recover from it."
+          actions={
+            <>
               <Button asChild>
                 <Link to="/datasets">
-                  Load datasets <ArrowRight className="ml-2 h-4 w-4" />
+                  Load datasets <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
               <Button variant="outline" asChild>
                 <Link to="/planner">Go to Planner</Link>
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </>
+          }
+        />
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-            <KpiCard label="Total inventory" value={Math.round(kpis!.total_inventory).toLocaleString()} icon={Package} sub="units on hand" />
-            <KpiCard label="Total demand" value={Math.round(kpis!.total_demand).toLocaleString()} icon={FileText} sub="units requested" />
-            <KpiCard
+          <section className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+            <Stat
+              label="Total inventory"
+              value={Math.round(kpis!.total_inventory).toLocaleString()}
+              sub="units on hand"
+              icon={Package}
+              tone="neutral"
+            />
+            <Stat
+              label="Total demand"
+              value={Math.round(kpis!.total_demand).toLocaleString()}
+              sub="units requested"
+              icon={FileText}
+              tone="info"
+            />
+            <Stat
               label="Fulfillment"
               value={`${(kpis!.fulfillment_rate * 100).toFixed(1)}%`}
-              icon={TrendingUp}
               sub={`${Math.round(kpis!.fulfilled).toLocaleString()} fulfilled`}
+              icon={TrendingUp}
+              tone="success"
+              bar={kpis!.fulfillment_rate}
             />
-            <KpiCard label="Unmet demand" value={Math.round(kpis!.unmet).toLocaleString()} icon={AlertTriangle} sub="units short" />
-            <KpiCard
+            <Stat
+              label="Unmet demand"
+              value={Math.round(kpis!.unmet).toLocaleString()}
+              sub="units short"
+              icon={AlertTriangle}
+              tone={kpis!.unmet > 0.001 ? 'danger' : 'success'}
+              bar={kpis!.total_demand ? kpis!.unmet / kpis!.total_demand : 0}
+            />
+            <Stat
               label="Total cost"
               value={`$${Math.round(kpis!.total_cost).toLocaleString()}`}
-              icon={DollarSign}
               sub="allocation cost"
+              icon={DollarSign}
+              tone="warning"
             />
-            <KpiCard
+            <Stat
               label="Risk score"
               value={kpis!.risk_score.toFixed(1)}
-              icon={Gauge}
               sub={`${kpis!.at_risk_destinations} at-risk dest.`}
+              icon={Gauge}
+              tone={kpis!.risk_score >= 40 ? 'danger' : kpis!.risk_score >= 20 ? 'warning' : 'success'}
+              bar={kpis!.risk_score / 100}
             />
-          </div>
+          </section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
+          <section className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
+            <Card className="min-w-0 overflow-hidden">
+              <CardHeader className="flex-row items-start justify-between space-y-0">
+                <div>
+                  <CardTitle>Plan journey</CardTitle>
+                  <CardDescription>
+                    {latest
+                      ? 'Baseline, disruption and recovery from the most recent scenario.'
+                      : 'Baseline only — break it to see the disruption and recovery legs.'}
+                  </CardDescription>
+                </div>
+                <Link
+                  to="/compare"
+                  className="inline-flex shrink-0 items-center gap-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-slate-400 transition-colors hover:text-slate-900"
+                >
+                  Compare <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              </CardHeader>
+              <CardContent>
+                <PlanJourney
+                  phases={[
+                    {
+                      key: 'baseline',
+                      label: 'Baseline',
+                      tone: 'neutral',
+                      kpis: latest?.kpis.baseline ?? kpis ?? null,
+                    },
+                    {
+                      key: 'disrupted',
+                      label: 'Disrupted',
+                      tone: 'bad',
+                      kpis: latest?.kpis.disrupted ?? null,
+                      pending: 'No disruption simulated yet.',
+                    },
+                    {
+                      key: 'recovered',
+                      label: 'Recovered',
+                      tone: 'good',
+                      kpis: latest?.kpis.recovered ?? null,
+                      pending: 'Recovery has not run yet.',
+                    },
+                  ]}
+                />
+                {latest ? (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-900/[0.06] pt-3">
+                    <span className="text-[11.5px] text-slate-500">
+                      Latest scenario · {scenarioTitle(latest)} · {disruptionLabel(latest.disruption)}
+                    </span>
+                    <Badge variant={latest.status === 'recovered' ? 'success' : 'warning'}>{latest.status}</Badge>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-900/[0.06] pt-3">
+                    <span className="text-[11.5px] text-slate-500">This plan has not been stress-tested.</span>
+                    <Link
+                      to="/disruption"
+                      className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-900 underline decoration-slate-300 underline-offset-4 hover:decoration-slate-900"
+                    >
+                      Open the Disruption Lab <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="min-w-0">
               <CardHeader>
                 <CardTitle>Capacity &amp; fulfillment</CardTitle>
                 <CardDescription>Percent utilization from the active plan</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-64">
+                <div className="h-60">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={utilizationData}>
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                      <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#0f172a" />
+                    <BarChart data={utilizationData} margin={{ top: 10, right: 8, bottom: 0, left: -18 }} barCategoryGap={30}>
+                      <defs>
+                        <linearGradient id="dashboardBar" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#0f172a" />
+                          <stop offset="100%" stopColor="#334155" />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid vertical={false} stroke="#e9ecf0" strokeDasharray="3 6" />
+                      <XAxis
+                        dataKey="name"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        dy={6}
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        ticks={[0, 25, 50, 75, 100]}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fill: '#94a3b8' }}
+                        tickFormatter={(v: number) => `${v}%`}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(15,23,42,0.03)' }}
+                        content={<ChartTooltip valueFormatter={(v) => `${Math.round(v)}%`} />}
+                      />
+                      <Bar
+                        dataKey="value"
+                        name="Utilization"
+                        fill="url(#dashboardBar)"
+                        radius={[7, 7, 2, 2]}
+                        maxBarSize={54}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
+          </section>
 
-            <Card>
+          <section className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]">
+            <Card className="min-w-0">
               <CardHeader>
                 <CardTitle>Fulfillment mix</CardTitle>
                 <CardDescription>Fulfilled vs unmet units</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-56">
+                <div className="relative h-56">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={pieData}
-                        innerRadius={58}
+                        innerRadius={62}
                         outerRadius={88}
                         dataKey="value"
                         paddingAngle={pieData.every((p) => p.value > 0) ? 2 : 0}
+                        cornerRadius={6}
                         startAngle={90}
                         endAngle={-270}
+                        stroke="none"
                       >
-                        {pieData.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                        ))}
+                        <Cell fill="#10b981" />
+                        <Cell fill="#ef4444" />
                       </Pie>
-                      <Tooltip />
-                      <Legend />
+                      <Tooltip content={<ChartTooltip valueFormatter={(v) => `${Math.round(v).toLocaleString()} u`} />} />
                     </PieChart>
                   </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="text-2xl font-semibold tracking-tight tabular text-slate-900">
+                      {(kpis!.fulfillment_rate * 100).toFixed(1)}%
+                    </div>
+                    <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-400">
+                      fulfilled
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
+                <div className="mt-1 flex flex-wrap items-center justify-center gap-5 text-[11px] text-slate-500">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Fulfilled <strong className="font-medium tabular text-slate-800">{Math.round(kpis!.fulfilled).toLocaleString()}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                    Unmet <strong className="font-medium tabular text-slate-800">{Math.round(kpis!.unmet).toLocaleString()}</strong>
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-900/[0.06] pt-3 text-[11px] text-slate-500">
                   <span>
-                    Warehouse utilization <strong className="text-slate-800">{(kpis!.wh_utilization * 100).toFixed(0)}%</strong>
+                    Warehouse utilization{' '}
+                    <strong className="font-medium tabular text-slate-800">{(kpis!.wh_utilization * 100).toFixed(0)}%</strong>
                   </span>
                   <span>
-                    Route utilization <strong className="text-slate-800">{(kpis!.route_utilization * 100).toFixed(0)}%</strong>
+                    Route utilization{' '}
+                    <strong className="font-medium tabular text-slate-800">{(kpis!.route_utilization * 100).toFixed(0)}%</strong>
                   </span>
                 </div>
               </CardContent>
             </Card>
-          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Recent scenarios</span>
-                <Link to="/compare" className="text-xs font-normal text-slate-500 hover:text-slate-900">
-                  Compare →
-                </Link>
-              </CardTitle>
-              <CardDescription>Every run is stored with its disruption config and computed results.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!scenarios.length ? (
-                <div className="flex flex-wrap items-center gap-3 py-4">
-                  <p className="text-sm text-slate-500">No scenarios yet. Simulate a disruption to test this plan.</p>
-                  <Button asChild size="sm" variant="outline">
-                    <Link to="/disruption">
-                      <Zap className="mr-2 h-4 w-4" /> Open Disruption Lab
-                    </Link>
-                  </Button>
+            <Card className="min-w-0">
+              <CardHeader className="flex-row items-start justify-between space-y-0">
+                <div>
+                  <CardTitle>Recent scenarios</CardTitle>
+                  <CardDescription>Every run is stored with its disruption config and computed results.</CardDescription>
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Scenario</TableHead>
-                      <TableHead>Disruption</TableHead>
-                      <TableHead className="text-right">Baseline</TableHead>
-                      <TableHead className="text-right">Disrupted</TableHead>
-                      <TableHead className="text-right">Recovered</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scenarios.map((s) => (
-                      <TableRow key={s.id}>
-                        <TableCell className="font-mono text-xs" title={s.id}>{scenarioTitle(s)}</TableCell>
-                        <TableCell className="text-sm">{disruptionLabel(s.disruption)}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {s.kpis.baseline ? `${(s.kpis.baseline.fulfillment_rate * 100).toFixed(1)}%` : '—'}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-red-700">
-                          {s.kpis.disrupted ? `${(s.kpis.disrupted.fulfillment_rate * 100).toFixed(1)}%` : '—'}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-700">
-                          {s.kpis.recovered ? `${(s.kpis.recovered.fulfillment_rate * 100).toFixed(1)}%` : '—'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={s.status === 'recovered' ? 'success' : 'warning'}>{s.status}</Badge>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-slate-500">
-                          <Clock className="mr-1 inline h-3 w-3" />
-                          {s.created_at ? new Date(s.created_at).toLocaleString() : '—'}
-                        </TableCell>
+                <Link
+                  to="/compare"
+                  className="inline-flex shrink-0 items-center gap-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-slate-400 transition-colors hover:text-slate-900"
+                >
+                  Compare <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {!scenarios.length ? (
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-slate-300/80 bg-slate-50/50 p-4">
+                    <p className="text-[13px] text-slate-500">No scenarios yet. Simulate a disruption to test this plan.</p>
+                    <Button asChild size="sm" variant="outline">
+                      <Link to="/disruption">
+                        <Zap className="h-3.5 w-3.5" /> Open Disruption Lab
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Scenario</TableHead>
+                        <TableHead>Disruption</TableHead>
+                        <TableHead className="text-right">Baseline</TableHead>
+                        <TableHead className="text-right">Disrupted</TableHead>
+                        <TableHead className="text-right">Recovered</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Created</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {scenarios.slice(0, 5).map((s) => (
+                        <TableRow key={s.id}>
+                          <TableCell className="font-mono text-[11px] text-slate-600" title={s.id}>
+                            {scenarioTitle(s)}
+                          </TableCell>
+                          <TableCell className="text-[12px] text-slate-600">{disruptionLabel(s.disruption)}</TableCell>
+                          <TableCell className="text-right tabular">
+                            {s.kpis.baseline ? `${(s.kpis.baseline.fulfillment_rate * 100).toFixed(1)}%` : '—'}
+                          </TableCell>
+                          <TableCell className="text-right tabular text-red-600">
+                            {s.kpis.disrupted ? `${(s.kpis.disrupted.fulfillment_rate * 100).toFixed(1)}%` : '—'}
+                          </TableCell>
+                          <TableCell className="text-right tabular text-emerald-700">
+                            {s.kpis.recovered ? `${(s.kpis.recovered.fulfillment_rate * 100).toFixed(1)}%` : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={s.status === 'recovered' ? 'success' : 'warning'}>{s.status}</Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-[11px] text-slate-500">
+                            <Clock className="mr-1 inline h-3 w-3" />
+                            {s.created_at ? new Date(s.created_at).toLocaleString() : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Active plan</CardTitle>
-              <CardDescription>
-                {planLoading
-                  ? 'Loading plan…'
-                  : `${plan!.type} · ${plan!.solver_status ?? plan!.status} · solver ${plan!.solver} · ${plan!.allocations.length} allocations`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/planner">Open in Planner</Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/disruption">Simulate disruption</Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/recovery">Run recovery</Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/exports">Export results</Link>
-              </Button>
-            </CardContent>
+          <Card className="overflow-hidden">
+            <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-900/[0.07] bg-slate-50 text-slate-500">
+                  <Database className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="text-eyebrow">Active context</div>
+                  <div className="mt-1 text-[13px] font-medium text-slate-900">
+                    {planLoading
+                      ? 'Loading plan…'
+                      : `${plan!.type} · ${plan!.solver_status ?? plan!.status} · ${plan!.allocations.length} allocations`}
+                  </div>
+                  <div className="mt-0.5 text-[11.5px] text-slate-500">
+                    Solver {plan!.solver} ·{' '}
+                    {plan!.constraints?.respect_deadlines ? 'deadlines enforced' : 'deadlines reported as KPI'}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/planner">Open in Planner</Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/recovery">Run recovery</Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/exports">Export results</Link>
+                </Button>
+              </div>
+            </div>
           </Card>
         </>
       )}
     </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  icon: React.ElementType;
-}) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-medium uppercase tracking-wider text-slate-500">{label}</div>
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100">
-            <Icon className="h-3.5 w-3.5 text-slate-600" />
-          </div>
-        </div>
-        <div className="mt-2 text-xl font-semibold tracking-tight">{value}</div>
-        {sub ? <div className="mt-1 text-xs text-slate-500">{sub}</div> : null}
-      </CardContent>
-    </Card>
   );
 }
