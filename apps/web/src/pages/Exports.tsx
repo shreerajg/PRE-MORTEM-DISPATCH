@@ -1,15 +1,23 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, FileSpreadsheet, Eye, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Eye, FileSpreadsheet, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { PageHeader } from '../components/PageHeader';
 import { compareScenario, exportScenario, listScenarios } from '../lib/api';
 import { disruptionLabel, scenarioTitle } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
+
+const CONTENTS = [
+  ['Plan blocks', 'Baseline, disrupted and recovered in one file'],
+  ['Allocations', 'Every shipment exactly as computed'],
+  ['Unmet demand', 'Gaps with destination, product and priority'],
+  ['KPIs', 'Fulfillment, cost, utilization and risk'],
+];
 
 export default function Exports() {
   const { scenarioId, setScenarioId } = useAppStore();
@@ -53,7 +61,9 @@ export default function Exports() {
       a.click();
       a.remove();
       URL.revokeObjectURL(href);
-      setDone(`Downloaded pre-mortem-scenario-${sid.slice(0, 8)}.csv (${Math.max(1, Math.round(blob.size / 1024))} KB)`);
+      setDone(
+        `Downloaded pre-mortem-scenario-${sid.slice(0, 8)}.csv (${Math.max(1, Math.round(blob.size / 1024))} KB)`,
+      );
     } catch (e) {
       setError(String((e as Error).message));
     } finally {
@@ -62,82 +72,148 @@ export default function Exports() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Exports</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Download the scenario exactly as computed — allocations, unmet demand and KPIs for every plan in the chain.
-        </p>
-      </div>
+    <div className="space-y-7">
+      <PageHeader
+        eyebrow="Step 06 · Export"
+        title="Exports"
+        description="Download the scenario exactly as computed — allocations, unmet demand and KPIs for every plan in the chain."
+      />
 
-      <Card>
+      <Card className="overflow-hidden">
+        <div aria-hidden className="h-1 w-full bg-gradient-to-r from-slate-800 via-slate-600 to-slate-400" />
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-4 w-4" /> Export scenario results
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-900/[0.07] bg-slate-50 text-slate-500">
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+            </span>
+            Export scenario results
           </CardTitle>
-          <CardDescription>CSV is generated server-side from stored plan data, so it matches the dashboard exactly.</CardDescription>
+          <CardDescription>
+            CSV is generated server-side from stored plan data, so it matches the dashboard exactly.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="md:col-span-2">
-              <label htmlFor="export-scenario" className="text-xs font-medium text-slate-600">
-                Scenario
-              </label>
-              <Select
-                id="export-scenario"
-                value={sid}
-                onChange={(e) => {
-                  setSid(e.target.value);
-                  setScenarioId(e.target.value);
-                  setDone(null);
-                  setError(null);
-                }}
-              >
-                <option value="">Select a scenario…</option>
-                {scenarios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {scenarioTitle(s)} · {disruptionLabel(s.disruption)} · {s.status}
-                  </option>
-                ))}
-              </Select>
-              {!scenarios.length ? (
-                <p className="mt-1 text-xs text-amber-600">
-                  No scenarios yet — <Link className="underline" to="/disruption">create one first</Link>.
-                </p>
-              ) : null}
-            </div>
-            <div className="flex items-end">
-              <Button onClick={doExport} disabled={!sid || downloading} className="w-full">
-                <Download className="mr-2 h-4 w-4" />
+        <CardContent>
+          <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="export-scenario" className="mb-1.5 block text-[11px] font-medium text-slate-600">
+                  Scenario
+                </label>
+                <Select
+                  id="export-scenario"
+                  value={sid}
+                  onChange={(e) => {
+                    setSid(e.target.value);
+                    setScenarioId(e.target.value);
+                    setDone(null);
+                    setError(null);
+                  }}
+                >
+                  <option value="">Select a scenario…</option>
+                  {scenarios.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {scenarioTitle(s)} · {disruptionLabel(s.disruption)} · {s.status}
+                    </option>
+                  ))}
+                </Select>
+                {!scenarios.length ? (
+                  <p className="mt-1.5 text-[11px] text-amber-600">
+                    No scenarios yet —{' '}
+                    <Link className="underline" to="/disruption">
+                      create one first
+                    </Link>
+                    .
+                  </p>
+                ) : null}
+              </div>
+
+              <Button onClick={doExport} disabled={!sid || downloading} className="w-full sm:w-auto">
+                <Download className="h-4 w-4" />
                 {downloading ? 'Preparing…' : 'Download CSV'}
               </Button>
+
+              {error ? (
+                <div className="flex items-start gap-2 rounded-xl border border-red-600/15 bg-red-50 p-3 text-[12.5px] text-red-700">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
+                </div>
+              ) : null}
+              {done ? (
+                <div className="flex items-start gap-2 rounded-xl border border-emerald-600/15 bg-emerald-50 p-3 text-[12.5px] text-emerald-800">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {done}
+                </div>
+              ) : null}
+
+              <div className="grid gap-2 border-t border-slate-900/[0.06] pt-4 sm:grid-cols-2">
+                {CONTENTS.map(([title, body]) => (
+                  <div key={title} className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <div>
+                      <div className="text-[11.5px] font-medium text-slate-700">{title}</div>
+                      <div className="text-[10.5px] leading-relaxed text-slate-500">{body}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative overflow-hidden rounded-xl border border-ink-800 bg-ink-900 p-4 text-white">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-emerald-400/[0.14] blur-2xl"
+              />
+              <div className="relative flex items-start justify-between">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-emerald-300/80">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 font-mono text-[8.5px] uppercase tracking-[0.14em] text-white/40">
+                  server-rendered
+                </span>
+              </div>
+              <div className="relative mt-4 truncate font-mono text-[11.5px] text-white/80">
+                {sid ? `pre-mortem-scenario-${sid.slice(0, 8)}.csv` : 'pre-mortem-scenario-xxxxxxxx.csv'}
+              </div>
+              <div className="relative mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/30">
+                text/csv · UTF-8 · attachment
+              </div>
+              <div className="relative mt-4 space-y-1.5 border-t border-white/[0.07] pt-3 font-mono text-[9.5px] text-white/40">
+                <div className="flex items-center justify-between">
+                  <span>allocations</span>
+                  <span className="text-white/60">{b ? 'included' : '—'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>unmet</span>
+                  <span className="text-white/60">{b ? 'included' : '—'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>kpis</span>
+                  <span className="text-white/60">{b ? 'included' : '—'}</span>
+                </div>
+              </div>
             </div>
           </div>
-
-          {error ? (
-            <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-            </div>
-          ) : null}
-          {done ? <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{done}</div> : null}
         </CardContent>
       </Card>
 
       {cmp ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Eye className="h-4 w-4" /> Export preview
-            </CardTitle>
-            <CardDescription>These are the exact values written to the file.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <CardHeader className="flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-slate-400" /> Export preview
+              </CardTitle>
+              <CardDescription>These are the exact values written to the file.</CardDescription>
+            </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary">Baseline {String(cmp.baseline?.plan_id ?? '—').slice(0, 8)}</Badge>
-              {cmp.disrupted ? <Badge variant="destructive">Disrupted {String(cmp.disrupted.plan_id).slice(0, 8)}</Badge> : null}
-              {cmp.recovered ? <Badge variant="success">Recovered {String(cmp.recovered.plan_id).slice(0, 8)}</Badge> : null}
+              {cmp.disrupted ? (
+                <Badge variant="destructive">Disrupted {String(cmp.disrupted.plan_id).slice(0, 8)}</Badge>
+              ) : null}
+              {cmp.recovered ? (
+                <Badge variant="success">Recovered {String(cmp.recovered.plan_id).slice(0, 8)}</Badge>
+              ) : null}
             </div>
-
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -159,10 +235,16 @@ export default function Exports() {
                     ['Risk score', (k: typeof b & object) => k.risk_score.toFixed(1)],
                   ].map(([label, fmt]) => (
                     <TableRow key={String(label)}>
-                      <TableCell className="font-medium">{String(label)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{b ? (fmt as (k: typeof b & object) => string)(b) : '—'}</TableCell>
-                      <TableCell className="text-right tabular-nums">{d ? (fmt as (k: typeof b & object) => string)(d) : '—'}</TableCell>
-                      <TableCell className="text-right tabular-nums">{r ? (fmt as (k: typeof b & object) => string)(r) : '—'}</TableCell>
+                      <TableCell className="font-medium text-slate-800">{String(label)}</TableCell>
+                      <TableCell className="text-right tabular text-slate-600">
+                        {b ? (fmt as (k: typeof b & object) => string)(b) : '—'}
+                      </TableCell>
+                      <TableCell className="text-right tabular text-red-600">
+                        {d ? (fmt as (k: typeof b & object) => string)(d) : '—'}
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular text-emerald-700">
+                        {r ? (fmt as (k: typeof b & object) => string)(r) : '—'}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -170,8 +252,10 @@ export default function Exports() {
             </div>
 
             <div>
-              <div className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">Trade-off</div>
-              <p className="text-sm text-slate-700">{cmp.tradeoff_narrative}</p>
+              <div className="text-eyebrow">Trade-off</div>
+              <p className="mt-1.5 rounded-xl border border-slate-900/[0.06] bg-slate-50/60 p-3 text-[12.5px] leading-relaxed text-slate-700">
+                {cmp.tradeoff_narrative}
+              </p>
             </div>
           </CardContent>
         </Card>

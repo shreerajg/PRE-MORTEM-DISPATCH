@@ -1,15 +1,27 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { GitCompare, Sparkles, Clock, ArrowRight } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from 'recharts';
+import { ArrowRight, Clock, GitCompare, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
+import { PageHeader } from '../components/PageHeader';
+import { PlanJourney } from '../components/PlanJourney';
+import { ChartTooltip } from '../components/ChartTooltip';
 import { compareScenario, listScenarios } from '../lib/api';
-import { disruptionLabel, scenarioTitle, solverStatusTone } from '../lib/utils';
+import { cn, disruptionLabel, scenarioTitle, solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -40,6 +52,8 @@ const METRICS: MetricRow[] = [
   { metric: 'Route utilization', key: 'route_utilization', fmt: pct0, goodWhenUp: false },
   { metric: 'Risk score', key: 'risk_score', fmt: dec, goodWhenUp: false },
 ];
+
+const PHASE_COLORS = ['#94a3b8', '#ef4444', '#10b981'];
 
 export default function Compare() {
   const { scenarioId, setScenarioId } = useAppStore();
@@ -75,22 +89,42 @@ export default function Compare() {
   const risk = cmp?.delivery_risk;
 
   // Small multiples: each metric keeps its own scale so nothing is dwarfed
-  const chart = (title: string, key: string, suffix: string, color: string) => {
+  const chart = (title: string, key: string, suffix: string, tickFormat?: (value: number) => string) => {
     const data = [
       { name: 'Baseline', value: valueOf(b, key) ?? 0 },
       { name: 'Disrupted', value: valueOf(d, key) ?? 0 },
       { name: 'Recovered', value: valueOf(r, key) ?? 0 },
     ];
     return (
-      <div>
-        <div className="mb-1 text-xs font-medium uppercase tracking-wider text-slate-500">{title}</div>
+      <div className="rounded-xl border border-slate-900/[0.06] bg-slate-50/40 p-3">
+        <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400">{title}</div>
         <div className="h-40">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} width={48} />
-              <Tooltip formatter={(v: number) => `${Math.round(v * 100) / 100}${suffix}`} />
-              <Bar dataKey="value" fill={color} radius={[4, 4, 0, 0]} />
+            <BarChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -12 }} barCategoryGap={22}>
+              <CartesianGrid vertical={false} stroke="#e9ecf0" strokeDasharray="3 6" />
+              <XAxis
+                dataKey="name"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                dy={5}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 9.5, fill: '#94a3b8' }}
+                tickFormatter={tickFormat}
+                width={44}
+              />
+              <Tooltip
+                cursor={{ fill: 'rgba(15,23,42,0.03)' }}
+                content={<ChartTooltip valueFormatter={(v) => `${Math.round(v * 100) / 100}${suffix}`} />}
+              />
+              <Bar dataKey="value" name={title} radius={[5, 5, 2, 2]} maxBarSize={38}>
+                {data.map((entry, index) => (
+                  <Cell key={entry.name} fill={PHASE_COLORS[index]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -99,30 +133,55 @@ export default function Compare() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Compare</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Absolute KPIs, computed deltas and the trade-off between plan, disruption and recovery.
-          </p>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link to="/exports">
-            Export this scenario <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
-        </Button>
-      </div>
+    <div className="space-y-7">
+      <PageHeader
+        eyebrow="Step 05 · Compare"
+        title="Compare"
+        description="Absolute KPIs, computed deltas and the trade-off between plan, disruption and recovery."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/exports">
+              Export this scenario <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        }
+        meta={
+          cmp ? (
+            <>
+              <Badge variant={solverStatusTone(cmp.baseline?.solver_status, cmp.baseline?.kpis?.unmet)}>
+                Baseline {String(cmp.baseline?.plan_id ?? '—').slice(0, 8)}
+                {cmp.baseline?.solver_status ? ` · ${cmp.baseline.solver_status}` : ''}
+              </Badge>
+              {cmp.disrupted ? (
+                <Badge variant="destructive">
+                  Disrupted {String(cmp.disrupted.plan_id).slice(0, 8)}
+                  {cmp.disrupted.solver_status ? ` · ${cmp.disrupted.solver_status}` : ''}
+                </Badge>
+              ) : null}
+              {cmp.recovered ? (
+                <Badge variant={solverStatusTone(cmp.recovered.solver_status, cmp.recovered.kpis?.unmet)}>
+                  Recovered {String(cmp.recovered.plan_id).slice(0, 8)}
+                  {cmp.recovered.solver_status ? ` · ${cmp.recovered.solver_status}` : ''}
+                </Badge>
+              ) : (
+                <Badge variant="outline">No recovery yet</Badge>
+              )}
+            </>
+          ) : null
+        }
+      />
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <GitCompare className="h-4 w-4" /> Choose scenario
+            <GitCompare className="h-4 w-4 text-slate-400" /> Choose scenario
           </CardTitle>
-          <CardDescription>Comparison always includes baseline and disrupted; recovered appears once recovery has run.</CardDescription>
+          <CardDescription>
+            Comparison always includes baseline and disrupted; recovered appears once recovery has run.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <label htmlFor="compare-scenario" className="text-xs font-medium text-slate-600">
+          <label htmlFor="compare-scenario" className="mb-1.5 block text-[11px] font-medium text-slate-600">
             Scenario
           </label>
           <Select
@@ -142,47 +201,52 @@ export default function Compare() {
             ))}
           </Select>
           {!scenarios.length ? (
-            <p className="mt-2 text-xs text-amber-600">
-              No scenarios yet — <Link className="underline" to="/disruption">create one in the Disruption Lab</Link>.
+            <p className="mt-2 text-[11px] text-amber-600">
+              No scenarios yet —{' '}
+              <Link className="underline" to="/disruption">
+                create one in the Disruption Lab
+              </Link>
+              .
             </p>
           ) : null}
         </CardContent>
       </Card>
 
       {cmpQuery.isError ? (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4 text-sm text-red-700">{String((cmpQuery.error as Error).message)}</CardContent>
+        <Card className="border-red-600/15 bg-red-50">
+          <CardContent className="p-4 text-[12.5px] text-red-700">{String((cmpQuery.error as Error).message)}</CardContent>
         </Card>
       ) : null}
 
       {!cmp ? (
-        <Card className="border-dashed">
-          <CardContent className="p-8 text-center text-sm text-slate-500">
+        <Card className="border-dashed border-slate-300/80 bg-white/70">
+          <CardContent className="p-10 text-center text-[13px] text-slate-500">
             Select a scenario to compare baseline, disrupted and recovered plans.
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant={solverStatusTone(cmp.baseline?.solver_status, cmp.baseline?.kpis?.unmet)}>
-              Baseline {String(cmp.baseline?.plan_id ?? '—').slice(0, 8)}
-              {cmp.baseline?.solver_status ? ` · ${cmp.baseline.solver_status}` : ''}
-            </Badge>
-            {cmp.disrupted ? (
-              <Badge variant="destructive">
-                Disrupted {String(cmp.disrupted.plan_id).slice(0, 8)}
-                {cmp.disrupted.solver_status ? ` · ${cmp.disrupted.solver_status}` : ''}
-              </Badge>
-            ) : null}
-            {cmp.recovered ? (
-              <Badge variant={solverStatusTone(cmp.recovered.solver_status, cmp.recovered.kpis?.unmet)}>
-                Recovered {String(cmp.recovered.plan_id).slice(0, 8)}
-                {cmp.recovered.solver_status ? ` · ${cmp.recovered.solver_status}` : ''}
-              </Badge>
-            ) : (
-              <Badge variant="outline">No recovery yet</Badge>
-            )}
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Plan journey</CardTitle>
+              <CardDescription>Fulfillment and cost move together; the trade-off is the difference.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PlanJourney
+                phases={[
+                  { key: 'baseline', label: 'Baseline', tone: 'neutral', kpis: b },
+                  { key: 'disrupted', label: 'Disrupted', tone: 'bad', kpis: d },
+                  {
+                    key: 'recovered',
+                    label: 'Recovered',
+                    tone: 'good',
+                    kpis: r,
+                    pending: 'No recovery run for this scenario.',
+                  },
+                ]}
+              />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -198,7 +262,7 @@ export default function Compare() {
                     <TableHead>Metric</TableHead>
                     <TableHead className="text-right">Baseline</TableHead>
                     <TableHead className="text-right">Disrupted</TableHead>
-                    <TableHead className="text-right">Recovered</TableHead>
+                    <TableHead className="text-right text-emerald-700">Recovered</TableHead>
                     <TableHead className="text-right">Δ D−B</TableHead>
                     <TableHead className="text-right">Δ R−D</TableHead>
                     <TableHead className="text-right">Δ R−B</TableHead>
@@ -213,10 +277,12 @@ export default function Compare() {
                       m.delta && group ? group[m.delta] : null;
                     return (
                       <TableRow key={m.metric}>
-                        <TableCell className="font-medium">{m.metric}</TableCell>
-                        <TableCell className="text-right tabular-nums">{bv === null ? '—' : m.fmt(bv)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{dv === null ? '—' : m.fmt(dv)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{rv === null ? '—' : m.fmt(rv)}</TableCell>
+                        <TableCell className="font-medium text-slate-800">{m.metric}</TableCell>
+                        <TableCell className="text-right tabular text-slate-600">{bv === null ? '—' : m.fmt(bv)}</TableCell>
+                        <TableCell className="text-right tabular text-slate-600">{dv === null ? '—' : m.fmt(dv)}</TableCell>
+                        <TableCell className="bg-emerald-50/40 text-right font-medium tabular text-slate-900">
+                          {rv === null ? '—' : m.fmt(rv)}
+                        </TableCell>
                         <DeltaCell value={delta(cmp.deltas?.disrupted_vs_baseline)} kind={m.delta} goodWhenUp={m.goodWhenUp} />
                         <DeltaCell value={delta(cmp.deltas?.recovered_vs_disrupted)} kind={m.delta} goodWhenUp={m.goodWhenUp} />
                         <DeltaCell value={delta(cmp.deltas?.recovered_vs_baseline)} kind={m.delta} goodWhenUp={m.goodWhenUp} />
@@ -232,10 +298,11 @@ export default function Compare() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" /> Deadline exposure across plans
+                  <Clock className="h-4 w-4 text-amber-600" /> Deadline exposure across plans
                 </CardTitle>
                 <CardDescription>
-                  Units that arrive after their destination deadline. A route delay raises this without removing capacity.
+                  Units that arrive after their destination deadline. A route delay raises this without removing
+                  capacity.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -249,16 +316,20 @@ export default function Compare() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {([
-                      ['Baseline', risk.baseline],
-                      ['Disrupted', risk.disrupted],
-                      ['Recovered', risk.recovered],
-                    ] as const).map(([label, rk]) => (
+                    {(
+                      [
+                        ['Baseline', risk.baseline],
+                        ['Disrupted', risk.disrupted],
+                        ['Recovered', risk.recovered],
+                      ] as const
+                    ).map(([label, rk]) => (
                       <TableRow key={label}>
-                        <TableCell className="font-medium">{label}</TableCell>
-                        <TableCell className="text-right tabular-nums">{rk ? Math.round(rk.at_risk_units).toLocaleString() : '—'}</TableCell>
-                        <TableCell className="text-right tabular-nums">{rk ? `${rk.max_late_days}d` : '—'}</TableCell>
-                        <TableCell className="text-xs text-slate-600">
+                        <TableCell className="font-medium text-slate-800">{label}</TableCell>
+                        <TableCell className="text-right tabular">
+                          {rk ? Math.round(rk.at_risk_units).toLocaleString() : '—'}
+                        </TableCell>
+                        <TableCell className="text-right tabular">{rk ? `${rk.max_late_days}d` : '—'}</TableCell>
+                        <TableCell className="font-mono text-[10.5px] text-slate-500">
                           {rk && rk.at_risk_destinations.length ? rk.at_risk_destinations.join(', ') : 'none'}
                         </TableCell>
                       </TableRow>
@@ -275,24 +346,49 @@ export default function Compare() {
               <CardDescription>Each metric uses its own scale — mixing them on one axis hides the smaller values.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-6 md:grid-cols-3">
-                {chart('Fulfillment (%)', 'fulfillment_rate', '%', '#0f172a')}
-                {chart('Unmet units', 'unmet', '', '#dc2626')}
-                {chart('Cost ($)', 'total_cost', '', '#334155')}
+              <div className="grid gap-3 md:grid-cols-3">
+                {chart('Fulfillment (%)', 'fulfillment_rate', '%', (v) => `${Math.round(v * 100)}%`)}
+                {chart('Unmet units', 'unmet', '', (v) => Math.round(v).toLocaleString())}
+                {chart(
+                  'Cost ($)',
+                  'total_cost',
+                  '',
+                  (v) => (v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${Math.round(v)}`),
+                )}
+              </div>
+              <div className="mt-3 flex items-center justify-center gap-5 text-[10.5px] text-slate-500">
+                {[
+                  ['Baseline', PHASE_COLORS[0]],
+                  ['Disrupted', PHASE_COLORS[1]],
+                  ['Recovered', PHASE_COLORS[2]],
+                ].map(([label, color]) => (
+                  <span key={label} className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+                    {label}
+                  </span>
+                ))}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-900/10">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4" /> Trade-off
-              </CardTitle>
-              <CardDescription>Derived from computed KPIs and residual demand.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed text-slate-700">{cmp.tradeoff_narrative}</p>
-            </CardContent>
+          <Card className="overflow-hidden border-ink-800 bg-ink-900 text-white">
+            <div className="relative p-5">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-emerald-400/[0.12] blur-3xl"
+              />
+              <div className="relative flex items-center gap-2 font-mono text-[9.5px] uppercase tracking-[0.18em] text-white/40">
+                <Sparkles className="h-3.5 w-3.5 text-emerald-300/80" />
+                Computed narrative
+              </div>
+              <h3 className="relative mt-1.5 text-[15px] font-semibold tracking-tight text-white">Trade-off</h3>
+              <p className="relative mt-2 max-w-3xl text-[13px] leading-relaxed text-white/65">
+                {cmp.tradeoff_narrative}
+              </p>
+              <div className="relative mt-3 font-mono text-[9px] uppercase tracking-[0.14em] text-white/25">
+                Derived from computed KPIs and residual demand
+              </div>
+            </div>
           </Card>
         </>
       )}
@@ -324,9 +420,16 @@ function DeltaCell({
         : Math.round(Math.abs(value)).toLocaleString();
 
   return (
-    <TableCell className={`text-right font-medium tabular-nums ${good ? 'text-emerald-700' : 'text-red-700'}`}>
-      {positive ? '+' : '−'}
-      {magnitude}
+    <TableCell className="text-right">
+      <span
+        className={cn(
+          'inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-medium tabular',
+          good ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700',
+        )}
+      >
+        {positive ? '+' : '−'}
+        {magnitude}
+      </span>
     </TableCell>
   );
 }
