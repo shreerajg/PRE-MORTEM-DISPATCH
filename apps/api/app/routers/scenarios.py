@@ -60,13 +60,21 @@ def _clean_name(value: Optional[str]) -> Optional[str]:
     return cleaned or None
 
 
-def _scenario_summary(scen: Dict[str, Any]) -> Dict[str, Any]:
-    """Compact scenario row for lists / dashboard recency panels."""
-    baseline_plan = db.get_plan(scen["baseline_plan_id"]) if scen.get("baseline_plan_id") else None
-    disrupted_plan = db.get_plan(scen["disrupted_plan_id"]) if scen.get("disrupted_plan_id") else None
-    recovered_plan = db.get_plan(scen["recovered_plan_id"]) if scen.get("recovered_plan_id") else None
+def _scenario_summary(
+    scen: Dict[str, Any],
+    kpis_by_plan: Optional[Dict[str, Optional[Dict[str, Any]]]] = None,
+) -> Dict[str, Any]:
+    """Compact scenario row for lists / dashboard recency panels.
 
-    def kpis(plan):
+    ``kpis_by_plan`` is a pre-fetched plan id → KPI map so list endpoints do not
+    issue three queries per scenario or decode full plan documents.
+    """
+    def kpis(plan_id):
+        if not plan_id:
+            return None
+        if kpis_by_plan is not None:
+            return kpis_by_plan.get(plan_id)
+        plan = db.get_plan(plan_id)
         return (plan or {}).get("data", {}).get("kpis")
 
     return {
@@ -79,9 +87,9 @@ def _scenario_summary(scen: Dict[str, Any]) -> Dict[str, Any]:
         "recovered_plan_id": scen.get("recovered_plan_id"),
         "disruption": scen.get("disruption"),
         "kpis": {
-            "baseline": kpis(baseline_plan),
-            "disrupted": kpis(disrupted_plan),
-            "recovered": kpis(recovered_plan),
+            "baseline": kpis(scen.get("baseline_plan_id")),
+            "disrupted": kpis(scen.get("disrupted_plan_id")),
+            "recovered": kpis(scen.get("recovered_plan_id")),
         },
     }
 
@@ -93,11 +101,22 @@ def list_scenarios(limit: int = 25, offset: int = 0):
     offset = max(0, offset)
     try:
         scenarios = db.list_scenarios(limit=limit, offset=offset)
+        plan_ids = [
+            plan_id
+            for scen in scenarios
+            for plan_id in (
+                scen.get("baseline_plan_id"),
+                scen.get("disrupted_plan_id"),
+                scen.get("recovered_plan_id"),
+            )
+            if plan_id
+        ]
+        plans = db.get_plan_kpis_by_ids(plan_ids)
         total = db.count_scenarios()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {
-        "scenarios": [_scenario_summary(s) for s in scenarios],
+        "scenarios": [_scenario_summary(s, plans) for s in scenarios],
         "total": total,
         "limit": limit,
         "offset": offset,

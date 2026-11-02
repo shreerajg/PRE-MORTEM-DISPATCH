@@ -174,3 +174,41 @@ def test_ortools_fallback_reports_a_reason():
     assert result.solver == "greedy"
     assert result.diagnostics.get("fallback") == "greedy"
     assert result.diagnostics.get("fallback_reason") == "ortools_not_installed"
+
+
+def test_dataset_list_returns_counts_not_full_networks(client, dataset):
+    listed = client.get("/api/v1/datasets/").json()
+    row = next(d for d in listed["datasets"] if d["id"] == dataset["dataset_id"])
+
+    # List rows must not ship every warehouse/route/demand row in the workspace.
+    assert "meta" not in row
+
+    detail = client.get(f"/api/v1/datasets/{dataset['dataset_id']}").json()
+    for table in ("warehouses", "destinations", "products", "routes", "inventory", "demand"):
+        assert row["counts"][table] == len(detail["meta"][table])
+    assert row["counts"]["warehouses"] == 4
+    assert row["counts"]["routes"] == 20
+
+
+def test_scenario_list_batches_plan_reads(client, baseline, monkeypatch):
+    created = client.post(
+        "/api/v1/scenarios",
+        json={
+            "baseline_plan_id": baseline["id"],
+            "disruption": {"type": "route_closure", "params": {"route_id": "RT-03"}},
+            "name": "batch-check",
+        },
+    ).json()
+
+    from app.repo import database as db
+
+    def fail_on_single_read(*args, **kwargs):
+        raise AssertionError("scenario list must not fetch plans one at a time")
+
+    monkeypatch.setattr(db, "get_plan", fail_on_single_read)
+
+    res = client.get("/api/v1/scenarios/", params={"limit": 10})
+    assert res.status_code == 200, res.text
+    row = next(s for s in res.json()["scenarios"] if s["id"] == created["scenario"]["id"])
+    assert row["kpis"]["baseline"]["fulfillment_rate"] == 1.0
+    assert row["kpis"]["disrupted"]["unmet"] == 500

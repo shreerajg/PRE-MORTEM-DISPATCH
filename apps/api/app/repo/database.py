@@ -185,6 +185,46 @@ def list_datasets() -> List[Dict[str, Any]]:
         conn.close()
 
 
+def list_dataset_summaries() -> List[Dict[str, Any]]:
+    """Dataset list rows without the stored network payload.
+
+    A workspace can hold many datasets; returning every warehouse, route and
+    demand row for each one turns a 20 KB list into megabytes and leaks the
+    full contents of every import. The detail endpoint still returns ``meta``.
+    """
+    conn = _connect()
+    try:
+        cur = conn.execute("SELECT id, name, created_at, meta FROM datasets ORDER BY created_at DESC")
+        result: List[Dict[str, Any]] = []
+        for row in cur.fetchall():
+            meta = _json_load(row["meta"], {})
+            report = meta.get("validation_report") or {}
+            summary = report.get("summary") or {}
+            result.append(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "created_at": row["created_at"],
+                    "counts": {
+                        table: len(meta.get(table) or [])
+                        for table in (
+                            "warehouses",
+                            "destinations",
+                            "products",
+                            "routes",
+                            "inventory",
+                            "demand",
+                        )
+                    },
+                    "valid": report.get("valid"),
+                    "issue_count": summary.get("total_issues"),
+                }
+            )
+        return result
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Plan helpers
 # ---------------------------------------------------------------------------
@@ -216,15 +256,59 @@ def get_plan(plan_id: str) -> Optional[Dict[str, Any]]:
         row = cur.fetchone()
         if row is None:
             return None
-        return {
-            "id": row["id"],
-            "dataset_id": row["dataset_id"],
-            "type": row["type"],
-            "status": row["status"],
-            "solver": row["solver"],
-            "created_at": row["created_at"],
-            "data": _json_load(row["data"], {}),
-        }
+        return _plan_row(row)
+    finally:
+        conn.close()
+
+
+def _plan_row(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        "id": row["id"],
+        "dataset_id": row["dataset_id"],
+        "type": row["type"],
+        "status": row["status"],
+        "solver": row["solver"],
+        "created_at": row["created_at"],
+        "data": _json_load(row["data"], {}),
+    }
+
+
+def get_plan_kpis_by_ids(plan_ids: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
+    """Project only ``data.kpis`` for scenario lists.
+
+    Decoding every allocation and diagnosis row just to render a fulfilment
+    number is wasteful; SQLite's JSON1 projection keeps the list payload small.
+    Older SQLite builds without JSON1 fall back to a full decode.
+    """
+    ids = [plan_id for plan_id in {*plan_ids} if plan_id]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    conn = _connect()
+    try:
+        try:
+            cur = conn.execute(
+                f"SELECT id, json_extract(data, '$.kpis') AS kpis FROM plans WHERE id IN ({placeholders})",
+                ids,
+            )
+            projected: Dict[str, Optional[Dict[str, Any]]] = {}
+            for row in cur.fetchall():
+                raw = row["kpis"]
+                if raw is None:
+                    projected[row["id"]] = None
+                    continue
+                try:
+                    projected[row["id"]] = json.loads(raw)
+                except (TypeError, ValueError):
+                    projected[row["id"]] = None
+            return projected
+        except sqlite3.OperationalError:
+            logger.warning("JSON1 unavailable; falling back to full plan decode", exc_info=True)
+            cur = conn.execute(f"SELECT id, data FROM plans WHERE id IN ({placeholders})", ids)
+            return {
+                row["id"]: _json_load(row["data"], {}).get("kpis")
+                for row in cur.fetchall()
+            }
     finally:
         conn.close()
 

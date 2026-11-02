@@ -191,7 +191,7 @@ def load_sample_dataset():
 @router.get("/")
 def list_datasets():
     try:
-        datasets = db.list_datasets()
+        datasets = db.list_dataset_summaries()
         return {"datasets": datasets, "total": db.count_datasets()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

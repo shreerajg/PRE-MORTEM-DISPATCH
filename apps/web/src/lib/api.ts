@@ -1,5 +1,32 @@
 const BASE: string = ((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL as string | undefined) ?? '';
 
+const OPERATOR_TOKEN_KEY = 'pmd.operator-token';
+
+/** Session-scoped operator token. It dies with the tab, not the browser. */
+export function getOperatorToken(): string | null {
+  try {
+    return sessionStorage.getItem(OPERATOR_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setOperatorToken(token: string): void {
+  try {
+    sessionStorage.setItem(OPERATOR_TOKEN_KEY, token.trim());
+  } catch {
+    // Private-mode storage failures must not break the console.
+  }
+}
+
+export function clearOperatorToken(): void {
+  try {
+    sessionStorage.removeItem(OPERATOR_TOKEN_KEY);
+  } catch {
+    // nothing to clear
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -10,6 +37,13 @@ export type HealthResponse = {
   solver_available?: boolean;
   db: string;
   db_error?: string;
+  operator_token_required?: boolean;
+  uptime_seconds?: number;
+};
+
+export type AuthStatusResponse = {
+  required: boolean;
+  scheme: 'bearer' | 'none';
 };
 
 export type ValidationIssue = {
@@ -49,8 +83,28 @@ export type Dataset = {
   };
 };
 
+export type DatasetCounts = {
+  warehouses: number;
+  destinations: number;
+  products: number;
+  routes: number;
+  inventory: number;
+  demand: number;
+};
+
+/** List rows deliberately exclude the stored network payload. */
+export type DatasetSummary = {
+  id: string;
+  name: string;
+  created_at: string;
+  counts: DatasetCounts;
+  valid?: boolean | null;
+  issue_count?: number | null;
+};
+
 export type ListDatasetsResponse = {
-  datasets: Dataset[];
+  datasets: DatasetSummary[];
+  total?: number;
 };
 
 export type KPISnapshot = {
@@ -295,15 +349,20 @@ export class ApiError extends Error {
   }
 }
 
-async function fetchWithTimeout(
+export async function fetchWithTimeout(
   path: string,
   init: RequestInit = {},
   timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = new Headers(init.headers);
+  const stored = getOperatorToken();
+  if (stored && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${stored}`);
+  }
   try {
-    return await fetch(url(path), { ...init, signal: controller.signal });
+    return await fetch(url(path), { ...init, headers, signal: controller.signal });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new ApiError(
@@ -363,6 +422,16 @@ function url(path: string) {
 // ---------------------------------------------------------------------------
 export async function health(): Promise<HealthResponse> {
   return request<HealthResponse>('/api/v1/health');
+}
+
+export async function authStatus(): Promise<AuthStatusResponse> {
+  return request<AuthStatusResponse>('/api/v1/auth/status');
+}
+
+/** Verify a candidate token without storing it (the login page stores it). */
+export async function authCheck(token?: string): Promise<{ ok: boolean; scheme: string; request_id?: string }> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  return request('/api/v1/auth/check', { headers });
 }
 
 export async function listDatasets(): Promise<ListDatasetsResponse> {

@@ -396,10 +396,10 @@ export default function Datasets() {
                         <div className="font-mono text-[9.5px] text-slate-400">{ds.id.slice(0, 12)}…</div>
                       </TableCell>
                       <TableCell className="text-right tabular text-slate-600">
-                        {ds.meta?.warehouses?.length ?? 0}
+                        {ds.counts?.warehouses ?? 0}
                       </TableCell>
                       <TableCell className="text-right tabular text-slate-600">
-                        {ds.meta?.routes?.length ?? 0}
+                        {ds.counts?.routes ?? 0}
                       </TableCell>
                       <TableCell className="text-[10.5px] text-slate-500">
                         {ds.created_at ? new Date(ds.created_at).toLocaleDateString() : '—'}
