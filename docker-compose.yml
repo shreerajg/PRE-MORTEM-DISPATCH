@@ -3,21 +3,40 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    # Bind the API to loopback: the web container is the public entry point and
+    # proxies /api. Keep the port for local docs and debugging.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     environment:
-      # Absolute path so the mounted volume is the same file the app writes.
-      DATABASE_URL: sqlite:////app/data/app.db
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      SOLVER: greedy
+      # The named volume below holds the database; bundled sample CSVs stay in
+      # the image at /app/data and are never shadowed by the volume.
+      DATABASE_URL: sqlite:////app/state/app.db
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      SOLVER: ${SOLVER:-greedy}
+      API_TOKEN: ${API_TOKEN:-}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
+      DOCS_ENABLED: ${DOCS_ENABLED:-true}
+      SECURITY_HEADERS: ${SECURITY_HEADERS:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-5242880}
     volumes:
-      - ./data:/app/data
+      - pmd-state:/app/state
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    init: true
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health').read()"]
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready').read()"
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
     restart: unless-stopped
 
   web:
@@ -25,8 +44,13 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     ports:
-      - "5173:80"
+      - "${WEB_PORT:-5173}:80"
     depends_on:
       api:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
+
+volumes:
+  pmd-state:

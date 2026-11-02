@@ -98,8 +98,14 @@ Open <http://localhost:5173>. No API key, no external service, no seed script.
 ```bash
 docker compose up --build
 # UI  http://localhost:5173
-# API http://localhost:8000/docs
+# API http://127.0.0.1:8000/docs   (loopback only; the web container proxies /api)
 ```
+
+The SQLite database lives in the `pmd-state` named volume, so `docker compose down` keeps it and
+`docker compose down -v` removes it. The API runs as a non-root user with a read-only root
+filesystem; nginx serves the SPA, proxies the API, applies a CSP and rate-limits `/api/`.
+
+For a gated deployment set `API_TOKEN` before starting (see [Production operation](#production-operation)).
 
 ### Optional: exact solver
 
@@ -117,14 +123,23 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 83 passed
+python -m pytest apps/api/tests -q          # 90 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
-# Browser E2E (needs both servers running)
-cd apps/web && npx playwright test          # 10 passed
+# Browser E2E — starts the API and Vite itself, on a separate e2e database
+cd apps/web && npx playwright test          # 11 passed
 ```
+
+`playwright.config.ts` auto-starts both processes and reuses already-running servers locally, so
+the E2E command needs no terminal setup. Set `E2E_DATABASE_URL` to isolate the run from
+`apps/api/data/e2e.db`.
+
+[`scripts/ci.sh`](scripts/ci.sh) runs tests, typecheck, build, browser workflow and container
+builds locally. The GitHub Actions definition is kept at
+[`docs/github-actions-ci.yml`](docs/github-actions-ci.yml) with a one-line enable command — the
+current repository credential lacks the `workflow` OAuth scope needed to push that path.
 
 The suite asserts invariants, not just "it returned 200":
 
@@ -229,25 +244,67 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 SOLVER=greedy            # greedy | ortools | auto
 LLM_ENABLED=false
 API_PORT=8000
+WEB_PORT=5173
 MAX_UPLOAD_BYTES=5242880
+
+# Production controls — all optional
+API_TOKEN=               # set to require Bearer <token> / X-API-Key on /api/v1
+ALLOWED_HOSTS=           # comma-separated Host allow-list; empty disables
+DOCS_ENABLED=true        # set false to remove /docs and /openapi.json
+SECURITY_HEADERS=true
+LOG_LEVEL=INFO
+APP_VERSION=1.0.0
+
 VITE_LOGIN_URL=          # frontend only; defaults to /login
 ```
 
 Uploads are capped per file and must be `.csv`. No secrets are required or committed.
 
-### Authentication hand-off
+### Access: open demo or operator token
 
-The landing page exposes **Sign in** in the header, the closing CTA and the footer. Authentication
-itself is owned by another workstream (Firebase), so the frontend only needs a destination:
+By default the console is open — the single-operator demo needs no account. Set `API_TOKEN` to
+gate every `/api/v1` route except health and auth discovery:
+
+```bash
+API_TOKEN="$(openssl rand -hex 24)" docker compose up --build
+# then open /login and paste the same value, or call:
+curl -H "Authorization: Bearer $API_TOKEN" http://127.0.0.1:8000/api/v1/plans/
+```
+
+The token is kept in `sessionStorage`, sent as a bearer header, and cleared when the tab closes.
+It is a **deployment gate, not a user identity system** — there are no accounts or roles.
+
+Authentication for real user accounts remains a separate Firebase workstream. The landing page
+exposes **Sign in** in the header, the closing CTA and the footer:
 
 | `VITE_LOGIN_URL` | Result |
 |---|---|
-| unset | Buttons point at `/login`, which renders a placeholder page stating auth is pending |
+| unset | Buttons point at `/login`, which handles both the token gate and the Firebase placeholder |
 | `/login` or a hosted URL | Buttons point there directly |
 
-To merge the Firebase module, either replace [`LoginPlaceholder.tsx`](apps/web/src/pages/LoginPlaceholder.tsx)
-with the real sign-in UI, or leave the repo alone and set `VITE_LOGIN_URL` — no component edits
-required. The console itself needs no account and continues to work either way.
+To merge the Firebase module, replace the relevant branch of
+[`LoginPlaceholder.tsx`](apps/web/src/pages/LoginPlaceholder.tsx) or set `VITE_LOGIN_URL` — the
+console itself does not depend on it.
+
+---
+
+## Production operation
+
+- **Health probes** — `GET /api/v1/health/live` checks the process, `/health/ready` checks the
+  database and returns `503` when it is unreachable, and `/health` is the UI-friendly alias.
+  Compose gates the web container on readiness.
+- **Edge hardening** — nginx applies a CSP, frame/referrer/permissions headers, gzip, immutable
+  asset caching, a 32 MB upload ceiling and per-IP rate limiting on `/api/`. The API adds
+  no-sniff/frame/referrer/COOP headers and `Cache-Control: no-store` to API responses.
+- **Traceable failures** — every response carries `X-Request-ID`; error envelopes repeat it, and
+  the API access log prints the same id with method, path, status and duration.
+- **Persistence** — Compose stores SQLite in the `pmd-state` volume. Back up by copying the
+  database, not by relying on the container filesystem.
+- **Honest scale limit** — one API worker against SQLite. Do not run multiple API replicas on the
+  same file; Postgres remains on the roadmap.
+
+Deployment details, backup commands and the incident checklist live in
+[`docs/operations.md`](docs/operations.md).
 
 ---
 
@@ -258,8 +315,8 @@ required. The console itself needs no account and continues to work either way.
   "baseline"`). With no matching demand history it returns an empty series and
   `reason: "insufficient_history"` rather than inventing one. No trained model, no accuracy
   claim, and the allocator never consumes it silently.
-- **Not** multi-user yet. The UI has a Sign-in entry point, but authentication is a separate
-  Firebase workstream; the console itself needs no account.
+- **Not** multi-user. `API_TOKEN` is a shared deployment gate, not accounts, roles or audit
+  trails; real identity remains a separate Firebase workstream.
 - **Not** LLM-dependent. An LLM may narrate computed results later; it is never the source of
   quantities, costs or feasibility.
 

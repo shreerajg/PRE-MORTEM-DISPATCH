@@ -13,10 +13,45 @@ Every response carries `X-Request-ID` (caller-supplied values are preserved) and
 | 200 | Read or successful action |
 | 201 | (reserved) created — current endpoints return 200 with the created object |
 | 400 | Invalid input, bad disruption params, unparseable CSV |
+| 401 | Operator token missing or invalid (`API_TOKEN` configured) |
 | 404 | Dataset / plan / scenario not found |
 | 413 | Upload exceeded the per-file size limit |
 | 422 | FastAPI request-shape validation failure |
+| 429 | Edge rate limit exceeded (nginx, when deployed through Compose) |
 | 500 | Unexpected error — no stack trace is returned to the client |
+| 503 | Database unreachable on `/health/ready` |
+
+Caller-supplied `X-Request-ID` values are preserved only when they match
+`[A-Za-z0-9._:-]{1,64}`; anything else is replaced. This keeps logs and the error
+envelope free of injected control characters.
+
+---
+
+## Authentication
+
+The API is open by default for the single-operator demo. When `API_TOKEN` is set,
+every `/api/v1` route except health and auth discovery requires either:
+
+```
+Authorization: Bearer <API_TOKEN>
+X-API-Key: <API_TOKEN>
+```
+
+Public exceptions: `GET /health`, `/health/live`, `/health/ready`, `/auth/status`.
+Failures use the standard envelope with `code: "unauthorized"`, include the request id,
+and send `WWW-Authenticate: Bearer`.
+
+### `GET /auth/status`
+```json
+{ "required": true, "scheme": "bearer" }
+```
+
+### `GET /auth/check`
+Protected (or open when no token is configured). Verifies a candidate token for the
+login page:
+```json
+{ "ok": true, "scheme": "bearer", "request_id": "a1b2c3d4e5f6" }
+```
 
 ---
 
@@ -43,8 +78,13 @@ No body. Idempotent per call (each call creates a new dataset id).
 (default 5 MB). Returns the same shape as `/datasets/sample`.
 
 ### `GET /datasets/`
+List rows are deliberately summaries: a workspace can hold many datasets, so the
+full network payload is only returned by `GET /datasets/{id}`.
 ```json
-{ "datasets": [ { "id": "...", "name": "...", "created_at": "...", "meta": { "...": "raw rows" } } ],
+{ "datasets": [ { "id": "...", "name": "...", "created_at": "...",
+                  "counts": { "warehouses": 4, "destinations": 8, "products": 3,
+                              "routes": 20, "inventory": 12, "demand": 24 },
+                  "valid": true, "issue_count": 0 } ],
   "total": 3 }
 ```
 
@@ -191,6 +231,7 @@ stays apples-to-apples.
 ### `GET /scenarios/`
 `?limit=25&offset=0` → `{ "scenarios": [...], "total": n, "limit": n, "offset": n }` with
 `kpis.{baseline,disrupted,recovered}`. `total` is the true table count, not the page size.
+Plans referenced by the page are fetched in one batched query, not three per scenario.
 
 ### `POST /scenarios/sweep`
 
@@ -306,10 +347,22 @@ Values are the stored computed plan — nothing is recomputed at export time.
 
 ## Operational
 
+### `GET /health/live`
+Process liveness only; does not touch the database.
+```json
+{ "status": "ok", "version": "1.0.0", "uptime_seconds": 42.3 }
+```
+
+### `GET /health/ready`
+Same body as `/health` but returns **`503`** when the database probe fails. Use this
+for container orchestration and load-balancer readiness.
+
 ### `GET /health`
+UI-friendly alias for readiness. Always `200`; the body reports the truth.
 ```json
 { "status": "ok", "version": "1.0.0", "solver": "greedy",
-  "solver_available": false, "db": "ok" }
+  "solver_available": false, "db": "ok",
+  "operator_token_required": false, "uptime_seconds": 42.3 }
 ```
 `status` becomes `degraded` and `db` becomes `error` when the database probe fails
 (`db_error` carries a short reason). `solver_available` reports whether OR-Tools can
