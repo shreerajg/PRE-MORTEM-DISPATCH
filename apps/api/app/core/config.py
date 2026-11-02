@@ -24,9 +24,21 @@ class Settings(BaseSettings):
     api_port: int = 8000
     max_upload_bytes: int = 5 * 1024 * 1024  # 5 MB per CSV
 
+    # Production controls. Empty values keep the single-operator demo unlocked.
+    api_token: str = ""  # when set, /api/v1 requires Bearer <token> or X-API-Key
+    allowed_hosts: str = ""  # comma-separated; empty disables host filtering
+    docs_enabled: bool = True
+    security_headers: bool = True
+    log_level: str = "INFO"
+    app_version: str = "1.0.0"
+
 
 settings = Settings()
 
 
 def get_cors_origins() -> list[str]:
     return [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+
+
+def get_allowed_hosts() -> list[str]:
+    return [host.strip() for host in settings.allowed_hosts.split(",") if host.strip()]

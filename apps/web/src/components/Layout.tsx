@@ -10,10 +10,11 @@ import {
   GitCompare,
   HeartPulse,
   LayoutDashboard,
+  LockKeyhole,
   Shield,
   Zap,
 } from 'lucide-react';
-import { health } from '../lib/api';
+import { authStatus, getOperatorToken, health } from '../lib/api';
 import { cn } from '../lib/utils';
 
 const nav = [
@@ -35,6 +36,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     refetchInterval: 15000,
     retry: false,
   });
+  const { data: auth } = useQuery({
+    queryKey: ['auth-status'],
+    queryFn: authStatus,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const locked = auth?.required === true && !getOperatorToken();
   const location = useLocation();
 
   const isActive = (to: string) => location.pathname === to || location.pathname.startsWith(to + '/');
@@ -201,6 +209,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
+              {locked ? (
+                <Link
+                  to="/login"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-600/20 bg-amber-50 px-2.5 py-1 font-mono text-[9.5px] uppercase tracking-[0.12em] text-amber-700 transition-colors hover:border-amber-600/40"
+                >
+                  <LockKeyhole className="h-3 w-3" />
+                  Unlock
+                </Link>
+              ) : null}
               <div
                 role="status"
                 aria-live="polite"

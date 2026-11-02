@@ -1,12 +1,23 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ApiError } from './lib/api';
+import { ApiError, clearOperatorToken } from './lib/api';
 import './index.css';
 
+function handleUnauthorized(error: unknown) {
+  if (error instanceof ApiError && error.status === 401) {
+    clearOperatorToken();
+    if (window.location.pathname !== '/login') {
+      window.location.assign('/login?reason=expired');
+    }
+  }
+}
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: handleUnauthorized }),
+  mutationCache: new MutationCache({ onError: handleUnauthorized }),
   defaultOptions: {
     queries: {
       // Retry transient failures (network/timeout/5xx) with backoff, but never
@@ -19,7 +30,9 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       staleTime: 10_000,
     },
-    mutations: { retry: false },
+    mutations: {
+      retry: false,
+    },
   },
 });
 

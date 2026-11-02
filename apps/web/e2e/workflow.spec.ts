@@ -226,6 +226,40 @@ test.describe('Landing page', () => {
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   });
 
+  test('operator token gate verifies and stores the token', async ({ page }) => {
+    await page.route('**/api/v1/auth/status', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ required: true, scheme: 'bearer' }),
+      }),
+    );
+    await page.route('**/api/v1/auth/check', (route) => {
+      const authorization = route.request().headers()['authorization'];
+      if (authorization === 'Bearer test-token') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, scheme: 'bearer' }),
+        });
+      }
+      return route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Missing or invalid operator token', code: 'unauthorized' }),
+      });
+    });
+
+    await page.goto('/login');
+    await expect(page.getByLabel('Operator token')).toBeVisible();
+    await page.getByLabel('Operator token').fill('test-token');
+    await page.getByRole('button', { name: /unlock console/i }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    const stored = await page.evaluate(() => sessionStorage.getItem('pmd.operator-token'));
+    expect(stored).toBe('test-token');
+  });
+
   test('renders without horizontal overflow on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
