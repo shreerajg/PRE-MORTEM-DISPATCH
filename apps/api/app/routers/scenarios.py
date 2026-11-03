@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.domain.schemas import AllocationInput, Demand, DisruptionRequest, Inventory, Route, ScenarioCreate, ScenarioRename
 from app.repo import database as db
 from app.services.allocation import solve_allocation
+from app.services.audit import record as record_activity
 from app.services.diagnosis import diagnose_unmet
 from app.services.disruption import apply_disruptions
 from app.services.kpi import compute_delivery_risk, compute_kpis
@@ -216,6 +217,19 @@ def create_scenario(body: ScenarioCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save scenario: {e}")
 
+    record_activity(
+        "scenario.created",
+        "scenario",
+        scenario_id,
+        {
+            "name": scenario_name,
+            "baseline_plan_id": body.baseline_plan_id,
+            "events": len(requested),
+            "fulfillment_rate": disrupted_kpi.fulfillment_rate,
+            "unmet": disrupted_kpi.unmet,
+        },
+    )
+
     # Compute impact deltas vs baseline
     baseline_kpis = baseline_data.get("kpis", {})
     # Normalize baseline kpis dict if KPISnapshot stored
@@ -357,6 +371,12 @@ def rename_scenario(scenario_id: str, body: ScenarioRename):
     if not name:
         raise HTTPException(status_code=400, detail="Scenario name cannot be blank")
     db.update_scenario(scenario_id, {"name": name})
+    record_activity(
+        "scenario.renamed",
+        "scenario",
+        scenario_id,
+        {"name": name, "previous_name": scen.get("name")},
+    )
     return {"scenario": db.get_scenario(scenario_id)}
 
 
@@ -375,6 +395,16 @@ def delete_scenario(scenario_id: str):
     deleted = db.delete_scenario_with_plans(scenario_id, owned_plan_ids)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
+    record_activity(
+        "scenario.deleted",
+        "scenario",
+        scenario_id,
+        {
+            "name": scen.get("name"),
+            "deleted_plan_ids": owned_plan_ids,
+            "baseline_plan_id": scen.get("baseline_plan_id"),
+        },
+    )
     return {
         "deleted": True,
         "scenario_id": scenario_id,
@@ -468,6 +498,19 @@ def recover_scenario(scenario_id: str):
 
     recovery_actions = recovered_result.diagnostics.get("recovery_actions", []) if isinstance(recovered_result.diagnostics, dict) else []
     residual_unmet = recovered_data["unmet"]
+
+    record_activity(
+        "scenario.recovered",
+        "scenario",
+        scenario_id,
+        {
+            "recovered_plan_id": recovered_plan_id,
+            "fulfillment_rate": recovered_kpi.fulfillment_rate,
+            "residual_units": recovered_kpi.unmet,
+            "total_cost": recovered_kpi.total_cost,
+            "actions": len(recovery_actions),
+        },
+    )
 
     return {"recovered_plan": {"id": recovered_plan_id, "dataset_id": dataset_id, "type": "recovered", "status": "completed", "solver": recovered_result.solver, "solver_status": recovered_result.status, "created_at": created_at, "allocations": recovered_data["allocations"], "unmet": recovered_data["unmet"], "kpis": recovered_data["kpis"], "unmet_diagnosis": recovered_diagnosis}, "recovery_actions": recovery_actions, "residual_unmet": residual_unmet, "residual_diagnosis": recovered_diagnosis}
 

@@ -206,6 +206,8 @@ def create_app() -> FastAPI:
     application.add_exception_handler(Exception, generic_exception_handler)
 
     # Routers are imported here so the app object exists before module-level imports run
+    from app.routers.activity import router as activity_router
+    from app.routers.analytics import router as analytics_router
     from app.routers.auth import router as auth_router
     from app.routers.datasets import router as datasets_router
     from app.routers.forecast import router as forecast_router
@@ -215,6 +217,8 @@ def create_app() -> FastAPI:
 
     application.include_router(health_router)
     application.include_router(auth_router)
+    application.include_router(activity_router)
+    application.include_router(analytics_router)
     application.include_router(datasets_router)
     application.include_router(plans_router)
     application.include_router(scenarios_router)

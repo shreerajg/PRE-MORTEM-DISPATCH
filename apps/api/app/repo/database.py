@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -112,6 +113,15 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                at TEXT NOT NULL,
+                action TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT,
+                detail TEXT NOT NULL DEFAULT '{}'
+            );
+
             -- List and history queries sort/filter on these columns; without
             -- indexes every page load scans the whole table.
             CREATE INDEX IF NOT EXISTS idx_datasets_created ON datasets(created_at DESC);
@@ -120,6 +130,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_plans_dataset ON plans(dataset_id);
             CREATE INDEX IF NOT EXISTS idx_scenarios_created ON scenarios(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_scenarios_baseline ON scenarios(baseline_plan_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_at ON activity(at DESC);
             """
         )
         # Existing databases predate scenario names; add the column in place.
@@ -510,3 +521,144 @@ def delete_scenario_with_plans(scenario_id: str, plan_ids: List[str]) -> bool:
         return cur.rowcount > 0
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Dataset lifecycle
+# ---------------------------------------------------------------------------
+
+def rename_dataset(dataset_id: str, name: str) -> bool:
+    conn = _connect()
+    try:
+        cur = conn.execute("UPDATE datasets SET name = ? WHERE id = ?", (name, dataset_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_dataset_cascade(dataset_id: str) -> Optional[Dict[str, int]]:
+    """Delete a dataset, its plans and every scenario branching from them.
+
+    One explicit transaction keeps a half-deleted workspace impossible. The
+    caller must confirm the cascade with the returned counts.
+    """
+    conn = _connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("SELECT 1 FROM datasets WHERE id = ?", (dataset_id,)).fetchone() is None:
+            conn.rollback()
+            return None
+
+        plan_ids = [
+            row["id"]
+            for row in conn.execute("SELECT id FROM plans WHERE dataset_id = ?", (dataset_id,)).fetchall()
+        ]
+        scenario_ids: List[str] = []
+        if plan_ids:
+            placeholders = ",".join("?" for _ in plan_ids)
+            scenario_ids = [
+                row["id"]
+                for row in conn.execute(
+                    f"""SELECT id FROM scenarios
+                        WHERE baseline_plan_id IN ({placeholders})
+                           OR disrupted_plan_id IN ({placeholders})
+                           OR recovered_plan_id IN ({placeholders})""",
+                    plan_ids * 3,
+                ).fetchall()
+            ]
+            if scenario_ids:
+                scen_placeholders = ",".join("?" for _ in scenario_ids)
+                conn.execute(f"DELETE FROM scenarios WHERE id IN ({scen_placeholders})", scenario_ids)
+            conn.execute(f"DELETE FROM plans WHERE id IN ({placeholders})", plan_ids)
+
+        conn.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))
+        conn.commit()
+        return {"deleted_plans": len(plan_ids), "deleted_scenarios": len(scenario_ids)}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Plan lifecycle
+# ---------------------------------------------------------------------------
+
+def plan_reference_count(plan_id: str) -> int:
+    conn = _connect()
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*) AS n FROM scenarios
+               WHERE baseline_plan_id = ? OR disrupted_plan_id = ? OR recovered_plan_id = ?""",
+            (plan_id, plan_id, plan_id),
+        ).fetchone()
+        return int(row["n"]) if row else 0
+    finally:
+        conn.close()
+
+
+def delete_plan(plan_id: str) -> bool:
+    conn = _connect()
+    try:
+        cur = conn.execute("DELETE FROM plans WHERE id = ?", (plan_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Activity trail
+# ---------------------------------------------------------------------------
+
+def log_activity(
+    action: str,
+    entity_type: str,
+    entity_id: Optional[str] = None,
+    detail: Optional[Dict[str, Any]] = None,
+) -> None:
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO activity (at, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)",
+            (
+                datetime.now(timezone.utc).isoformat(),
+                action,
+                entity_type,
+                entity_id,
+                json.dumps(detail or {}),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_activity(limit: int = 25, offset: int = 0) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM activity ORDER BY at DESC, id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "at": row["at"],
+                "action": row["action"],
+                "entity_type": row["entity_type"],
+                "entity_id": row["entity_id"],
+                "detail": _json_load(row["detail"], {}),
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def count_activity() -> int:
+    return _count("activity")

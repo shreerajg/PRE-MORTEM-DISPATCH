@@ -11,14 +11,20 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.repo import database as db
+from app.services.audit import record as record_activity
 from app.services.validation import parse_csv, validate_dataset
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["datasets"])
 
 SAMPLE_TABLES = ("warehouses", "destinations", "products", "routes", "inventory", "demand")
+
+
+class DatasetRename(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
 
 
 def _sample_dir() -> Optional[Path]:
@@ -161,6 +167,12 @@ async def import_dataset(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save dataset: {e}")
+    record_activity(
+        "dataset.created",
+        "dataset",
+        result["dataset_id"],
+        {"name": result["name"], "source": "import"},
+    )
     return result
 
 
@@ -179,13 +191,20 @@ def load_sample_dataset():
         raise HTTPException(status_code=500, detail=f"Failed to read sample data: {e}")
 
     try:
-        return _persist_dataset(
+        result = _persist_dataset(
             tables["warehouses"], tables["destinations"], tables["products"],
             tables["routes"], tables["inventory"], tables["demand"],
             name="Sample Network (bundled)",
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save sample dataset: {e}")
+    record_activity(
+        "dataset.created",
+        "dataset",
+        result["dataset_id"],
+        {"name": result["name"], "source": "sample"},
+    )
+    return result
 
 
 @router.get("/")
@@ -219,3 +238,50 @@ def validate_existing(dataset_id: str):
     dem = meta.get("demand", [])
     report = validate_dataset(wh, dest, prod, routes, inv, dem)
     return report.model_dump() if hasattr(report, "model_dump") else report
+
+
+@router.patch("/{dataset_id}")
+def rename_dataset(dataset_id: str, body: DatasetRename):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Dataset name cannot be blank")
+    ds = db.get_dataset(dataset_id)
+    if not ds:
+        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+    if not db.rename_dataset(dataset_id, name):
+        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+    record_activity(
+        "dataset.renamed",
+        "dataset",
+        dataset_id,
+        {"name": name, "previous_name": ds.get("name")},
+    )
+    return {"dataset_id": dataset_id, "name": name}
+
+
+@router.delete("/{dataset_id}")
+def delete_dataset(dataset_id: str):
+    """Delete a dataset and everything derived from it, in one transaction."""
+    ds = db.get_dataset(dataset_id)
+    if not ds:
+        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+    try:
+        deleted = db.delete_dataset_cascade(dataset_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete dataset: {e}")
+    if deleted is None:
+        raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+    record_activity(
+        "dataset.deleted",
+        "dataset",
+        dataset_id,
+        {"name": ds.get("name"), **deleted},
+    )
+    return {
+        "deleted": True,
+        "dataset_id": dataset_id,
+        "name": ds.get("name"),
+        **deleted,
+    }

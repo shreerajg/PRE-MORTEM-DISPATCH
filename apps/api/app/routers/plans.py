@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.domain.schemas import AllocationInput
 from app.repo import database as db
 from app.services.allocation import solve_allocation
+from app.services.audit import record as record_activity
 from app.services.diagnosis import diagnose_unmet
 from app.services.kpi import compute_delivery_risk, compute_kpis
 from app.services.normalize import build_network, load_deadlines, load_destinations
@@ -81,6 +82,20 @@ def create_plan(body: PlanCreateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save plan: {e}")
 
+    record_activity(
+        "plan.created",
+        "plan",
+        plan_id,
+        {
+            "dataset_id": body.dataset_id,
+            "solver": solver_used,
+            "solver_status": result.status,
+            "fulfillment_rate": kpi.fulfillment_rate,
+            "total_cost": kpi.total_cost,
+            "respect_deadlines": bool(body.respect_deadlines),
+        },
+    )
+
     return {
         "id": plan_id,
         "dataset_id": body.dataset_id,
@@ -136,3 +151,32 @@ def get_plan(plan_id: str):
         "constraints": data.get("constraints", {}),
         "unmet_diagnosis": data.get("unmet_diagnosis", []),
     }
+
+
+@router.delete("/{plan_id}")
+def delete_plan(plan_id: str):
+    """Delete an unreferenced plan. Scenarios keep their history intact."""
+    plan = db.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+
+    references = db.plan_reference_count(plan_id)
+    if references:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Plan {plan_id} is referenced by {references} scenario(s); "
+                "delete those scenarios first."
+            ),
+        )
+
+    if not db.delete_plan(plan_id):
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+
+    record_activity(
+        "plan.deleted",
+        "plan",
+        plan_id,
+        {"dataset_id": plan.get("dataset_id"), "type": plan.get("type")},
+    )
+    return {"deleted": True, "plan_id": plan_id, "type": plan.get("type")}
