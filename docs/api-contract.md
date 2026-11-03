@@ -15,6 +15,7 @@ Every response carries `X-Request-ID` (caller-supplied values are preserved) and
 | 400 | Invalid input, bad disruption params, unparseable CSV |
 | 401 | Operator token missing or invalid (`API_TOKEN` configured) |
 | 404 | Dataset / plan / scenario not found |
+| 409 | Plan still referenced by a scenario; delete the scenario first |
 | 413 | Upload exceeded the per-file size limit |
 | 422 | FastAPI request-shape validation failure |
 | 429 | Edge rate limit exceeded (nginx, when deployed through Compose) |
@@ -93,6 +94,22 @@ Returns the stored dataset document including `meta.validation_report`.
 
 ### `POST /datasets/{id}/validate`
 Re-runs validation against the stored rows and returns a `ValidationReport`.
+
+### `PATCH /datasets/{id}`
+```json
+{ "name": "Q4 trial network" }
+```
+Name is trimmed; blank names are `400`, lengths over 80 are `422`. Returns
+`{ "dataset_id": "...", "name": "..." }`.
+
+### `DELETE /datasets/{id}`
+Deletes the dataset and everything derived from it **in one transaction**: all of its
+plans, and every scenario referencing those plans.
+```json
+{ "deleted": true, "dataset_id": "...", "name": "Sample Network (bundled)",
+  "deleted_plans": 3, "deleted_scenarios": 1 }
+```
+`404` if the dataset does not exist. There is no partial cascade.
 
 ---
 
@@ -174,6 +191,14 @@ emptied by newer plans of another type. `constraints` reports the planning polic
 ### `GET /plans/{id}`
 Same shape as the create response, including `solver_status`, `constraints` and
 `unmet_diagnosis`.
+
+### `DELETE /plans/{id}`
+Deletes an unreferenced plan. If a scenario still points at it as baseline, disrupted or
+recovered plan, the API returns `409` with `code: "conflict"` and names the scenario
+count; delete those scenarios first.
+```json
+{ "deleted": true, "plan_id": "...", "type": "baseline" }
+```
 
 ---
 
@@ -342,6 +367,60 @@ remaining gap after recovery (for example `contingency_only` or `deadline_blocke
 Structure: `Scenario: <name> (<id>)` (or `Scenario: <id>` when unnamed), then one block per
 plan (`Plan: <id> (<type>)`) containing `Allocations`, `Unmet`, and `KPIs` sections.
 Values are the stored computed plan — nothing is recomputed at export time.
+
+---
+
+## Activity
+
+### `GET /activity?limit=25&offset=0`
+Newest-first audit trail of stored mutations. Page views and ephemeral sweeps are not
+recorded.
+```json
+{
+  "events": [
+    { "id": 12, "at": "2026-11-03T10:00:00+00:00", "action": "scenario.recovered",
+      "entity_type": "scenario", "entity_id": "uuid",
+      "detail": { "fulfillment_rate": 1.0, "residual_units": 0, "total_cost": 26030, "actions": 9 } }
+  ],
+  "total": 12, "limit": 25, "offset": 0
+}
+```
+Recorded actions: `dataset.created`, `dataset.renamed`, `dataset.deleted`,
+`plan.created`, `plan.deleted`, `scenario.created`, `scenario.recovered`,
+`scenario.renamed`, `scenario.deleted`.
+
+---
+
+## Analytics
+
+### `GET /analytics/overview?limit=50`
+Read-only aggregation of stored scenario KPIs. Plans are not re-solved; only
+`data.kpis` is projected from the database.
+```json
+{
+  "total_scenarios": 50,
+  "scenarios_analyzed": 50,
+  "limit": 50,
+  "summary": {
+    "scenarios_analyzed": 50, "recovered": 33,
+    "avg_disrupted_fulfillment": 0.9043, "avg_recovery_cost": 3301.4545,
+    "avg_restored_pp": 9.7552, "open_gap_scenarios": 1
+  },
+  "by_type": [
+    { "type": "route_closure", "count": 36,
+      "avg_unmet_delta": 500, "avg_fulfillment_drop_pp": -10.1 }
+  ],
+  "trend": [
+    { "id": "uuid", "name": "Q4 lane closure", "created_at": "...", "status": "recovered",
+      "disruption_type": "route_closure",
+      "baseline_fulfillment": 1.0, "disrupted_fulfillment": 0.8994, "recovered_fulfillment": 1.0,
+      "cost_delta": -1620, "unmet_delta": 500, "recovery_cost": 3410,
+      "restored_pp": 10.1, "residual_units": 0 }
+  ]
+}
+```
+`trend` is oldest → newest; `total_scenarios` is the table count, which can exceed the
+analyzed page size.
 
 ---
 

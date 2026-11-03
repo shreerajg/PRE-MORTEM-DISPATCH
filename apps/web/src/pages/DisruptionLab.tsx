@@ -164,6 +164,8 @@ export default function DisruptionLab() {
       setDisruptedPlan(res.disrupted_plan);
       setRecoveredPlan(null);
       qc.invalidateQueries({ queryKey: ['scenarios'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 

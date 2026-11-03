@@ -10,6 +10,7 @@ import {
   Info,
   Play,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -21,7 +22,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Stat } from '../components/Stat';
 import { EmptyState } from '../components/EmptyState';
 import { CauseBadge } from '../components/CauseBadge';
-import { listDatasets, createPlan, getPlan, getDataset, listPlans, type UnmetDiagnosis } from '../lib/api';
+import { listDatasets, createPlan, getPlan, getDataset, listPlans, deletePlan, type PlanSummary, type UnmetDiagnosis } from '../lib/api';
 import { cn, solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
@@ -66,8 +67,27 @@ export default function Planner() {
       setPlanId(res.id);
       setBaselinePlan(res);
       qc.invalidateQueries({ queryKey: ['plans'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deletePlan(id),
+    onSuccess: (res) => {
+      if (res.plan_id === planId) setPlanId(null);
+      qc.invalidateQueries({ queryKey: ['plans'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+
+  const onDeletePlan = (p: PlanSummary) => {
+    const confirmed = window.confirm(
+      `Delete baseline plan ${p.id.slice(0, 8)}?\n\nScenarios that reference it must be deleted first.`,
+    );
+    if (confirmed) deleteMut.mutate(p.id);
+  };
 
   const plan = planQuery.data;
   const kpis = plan?.kpis;
@@ -246,9 +266,21 @@ export default function Planner() {
                       <TableCell className="text-right tabular">${Math.round(p.kpis?.total_cost ?? 0).toLocaleString()}</TableCell>
                       <TableCell className="text-[11px] text-slate-500">{p.created_at.slice(0, 16).replace('T', ' ')}</TableCell>
                       <TableCell>
-                        <Button size="sm" variant={p.id === activePlanId ? 'default' : 'outline'} onClick={() => setPlanId(p.id)}>
-                          {p.id === activePlanId ? 'Active' : 'Inspect'}
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" variant={p.id === activePlanId ? 'default' : 'outline'} onClick={() => setPlanId(p.id)}>
+                            {p.id === activePlanId ? 'Active' : 'Inspect'}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-slate-500 hover:text-red-600"
+                            aria-label={`Delete plan ${p.id.slice(0, 8)}`}
+                            title="Delete this baseline plan"
+                            onClick={() => onDeletePlan(p)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -257,6 +289,12 @@ export default function Planner() {
             </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      {deleteMut.isError ? (
+        <div className="flex items-start gap-2 rounded-xl border border-red-600/15 bg-red-50 p-3 text-[12.5px] text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {String((deleteMut.error as Error).message)}
+        </div>
       ) : null}
 
       {!plan ? (

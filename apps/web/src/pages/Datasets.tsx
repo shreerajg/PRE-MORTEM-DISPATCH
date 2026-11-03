@@ -9,7 +9,9 @@ import {
   FileUp,
   Info,
   Layers,
+  Pencil,
   RefreshCw,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -22,7 +24,10 @@ import {
   importDataset,
   loadSampleDataset,
   getDataset,
+  renameDataset,
+  deleteDataset,
   type Dataset,
+  type DatasetSummary,
   type ImportDatasetResponse,
   type ValidationReport,
 } from '../lib/api';
@@ -55,6 +60,7 @@ export default function Datasets() {
     Object.fromEntries(TABLES.map((t) => [t, null])),
   );
   const [lastImport, setLastImport] = React.useState<ImportDatasetResponse | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
 
   const { data: listData, isFetching: listLoading } = useQuery({
     queryKey: ['datasets'],
@@ -74,16 +80,61 @@ export default function Datasets() {
 
   const onImported = (res: ImportDatasetResponse) => {
     setLastImport(res);
+    setNotice(null);
     setDatasetId(res.dataset_id);
     setPlanId(null);
     qc.invalidateQueries({ queryKey: ['datasets'] });
+    qc.invalidateQueries({ queryKey: ['activity'] });
+    qc.invalidateQueries({ queryKey: ['analytics'] });
   };
 
   const uploadMut = useMutation({ mutationFn: (fd: FormData) => importDataset(fd), onSuccess: onImported });
   const sampleMut = useMutation({ mutationFn: loadSampleDataset, onSuccess: onImported });
 
-  const busy = uploadMut.isPending || sampleMut.isPending;
-  const error = uploadMut.error ?? sampleMut.error;
+  const renameMut = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => renameDataset(id, name),
+    onSuccess: (res) => {
+      setNotice(`Dataset renamed to “${res.name}”.`);
+      qc.invalidateQueries({ queryKey: ['datasets'] });
+      qc.invalidateQueries({ queryKey: ['dataset', res.dataset_id] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteDataset(id),
+    onSuccess: (res) => {
+      setNotice(
+        `Deleted “${res.name}” · ${res.deleted_plans} plan(s) · ${res.deleted_scenarios} scenario(s).`,
+      );
+      if (res.dataset_id === datasetId) {
+        setDatasetId(null);
+        setPlanId(null);
+        setLastImport(null);
+      }
+      qc.invalidateQueries({ queryKey: ['datasets'] });
+      qc.invalidateQueries({ queryKey: ['plans'] });
+      qc.invalidateQueries({ queryKey: ['scenarios'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+
+  const busy = uploadMut.isPending || sampleMut.isPending || renameMut.isPending || deleteMut.isPending;
+  const error = uploadMut.error ?? sampleMut.error ?? renameMut.error ?? deleteMut.error;
+
+  const onRename = (ds: DatasetSummary) => {
+    const next = window.prompt('Rename dataset', ds.name);
+    if (next?.trim()) renameMut.mutate({ id: ds.id, name: next.trim() });
+  };
+
+  const onDelete = (ds: DatasetSummary) => {
+    const confirmed = window.confirm(
+      `Delete “${ds.name}”?\n\nEvery plan and scenario derived from it will also be deleted. This cannot be undone.`,
+    );
+    if (confirmed) deleteMut.mutate(ds.id);
+  };
 
   const canUpload = TABLES.every((t) => files[t]);
 
@@ -181,6 +232,21 @@ export default function Datasets() {
           <CardContent className="flex items-center gap-2 p-4 text-[12.5px] text-emerald-800">
             <CheckCircle2 className="h-4 w-4" /> Dataset imported — {lastImport.dataset_id.slice(0, 8)} · proceed to the
             Planner.
+          </CardContent>
+        </Card>
+      ) : null}
+      {notice && !error ? (
+        <Card className="border-slate-900/[0.07] bg-white">
+          <CardContent className="flex flex-wrap items-center gap-2 p-4 text-[12.5px] text-slate-700">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span className="flex-1">{notice}</span>
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-slate-400 transition-colors hover:text-slate-800"
+            >
+              Dismiss
+            </button>
           </CardContent>
         </Card>
       ) : null}
@@ -405,17 +471,40 @@ export default function Datasets() {
                         {ds.created_at ? new Date(ds.created_at).toLocaleDateString() : '—'}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant={ds.id === datasetId ? 'default' : 'outline'}
-                          onClick={() => {
-                            setDatasetId(ds.id);
-                            setPlanId(null);
-                            setLastImport(null);
-                          }}
-                        >
-                          {ds.id === datasetId ? 'Active' : 'Use'}
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant={ds.id === datasetId ? 'default' : 'outline'}
+                            onClick={() => {
+                              setDatasetId(ds.id);
+                              setPlanId(null);
+                              setLastImport(null);
+                              setNotice(null);
+                            }}
+                          >
+                            {ds.id === datasetId ? 'Active' : 'Use'}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-slate-500 hover:text-slate-900"
+                            aria-label={`Rename ${ds.name}`}
+                            title="Rename dataset"
+                            onClick={() => onRename(ds)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-slate-500 hover:text-red-600"
+                            aria-label={`Delete ${ds.name}`}
+                            title="Delete dataset and its derived plans/scenarios"
+                            onClick={() => onDelete(ds)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

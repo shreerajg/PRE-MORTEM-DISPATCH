@@ -164,6 +164,35 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByLabel('Scenario', { exact: true })).not.toContainText(renamed);
   });
 
+  test('a dataset can be renamed and deleted from the workspace', async ({ page, request }) => {
+    const created = await request.post('/api/v1/datasets/sample');
+    expect(created.ok()).toBeTruthy();
+    const datasetId = (await created.json()).dataset_id as string;
+    const original = `E2E dataset ${Date.now()}`;
+    const renamed = `${original} renamed`;
+
+    const patch = await request.patch(`/api/v1/datasets/${datasetId}`, { data: { name: original } });
+    expect(patch.ok()).toBeTruthy();
+
+    await page.goto('/datasets');
+    const row = page.getByRole('row', { name: new RegExp(original) });
+    await expect(row).toBeVisible();
+
+    page.once('dialog', (dialog) => dialog.accept(renamed));
+    await row.getByRole('button', { name: `Rename ${original}` }).click();
+    await expect(page.getByText(/Dataset renamed to/)).toBeVisible();
+    const renamedRow = page.getByRole('row', { name: new RegExp(renamed) });
+    await expect(renamedRow).toBeVisible();
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await renamedRow.getByRole('button', { name: `Delete ${renamed}` }).click();
+    await expect(page.getByText(/Deleted “/)).toBeVisible();
+    await expect(page.getByRole('row', { name: new RegExp(renamed) })).toHaveCount(0);
+
+    const gone = await request.get(`/api/v1/datasets/${datasetId}`);
+    expect(gone.status()).toBe(404);
+  });
+
   test('empty states explain what to do next', async ({ page }) => {
     // Pin the scenario list to empty so the assertion cannot race a seeded backend.
     await page.route('**/api/v1/scenarios/?limit=*', (route) =>
@@ -179,6 +208,113 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByLabel('Scenario', { exact: true })).toBeVisible();
     await expect(page.getByText(/No scenarios yet/)).toBeVisible();
     await expect(page.getByText('No recovery run yet.')).toBeVisible();
+  });
+});
+
+test.describe('Insights', () => {
+  test('aggregates scenario history and shows the activity trail', async ({ page }) => {
+    await page.route('**/api/v1/analytics/overview*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total_scenarios: 2,
+          scenarios_analyzed: 2,
+          limit: 50,
+          summary: {
+            scenarios_analyzed: 2,
+            recovered: 2,
+            avg_disrupted_fulfillment: 0.8994,
+            avg_recovery_cost: 3410,
+            avg_restored_pp: 10.1,
+            open_gap_scenarios: 0,
+          },
+          by_type: [
+            { type: 'route_closure', count: 2, avg_unmet_delta: 500, avg_fulfillment_drop_pp: -10.1 },
+          ],
+          trend: [
+            {
+              id: 'scenario-one',
+              name: 'Lane closure',
+              created_at: '2026-11-01T10:00:00+00:00',
+              status: 'recovered',
+              disruption_type: 'route_closure',
+              baseline_fulfillment: 1,
+              disrupted_fulfillment: 0.899,
+              recovered_fulfillment: 1,
+              cost_delta: -1620,
+              unmet_delta: 500,
+              recovery_cost: 3410,
+              restored_pp: 10.1,
+              residual_units: 0,
+            },
+            {
+              id: 'scenario-two',
+              name: 'Lane closure again',
+              created_at: '2026-11-02T10:00:00+00:00',
+              status: 'recovered',
+              disruption_type: 'route_closure',
+              baseline_fulfillment: 1,
+              disrupted_fulfillment: 0.899,
+              recovered_fulfillment: 1,
+              cost_delta: -1620,
+              unmet_delta: 500,
+              recovery_cost: 3410,
+              restored_pp: 10.1,
+              residual_units: 0,
+            },
+          ],
+        }),
+      }),
+    );
+    await page.route('**/api/v1/activity*', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total: 3,
+          limit: 12,
+          offset: 0,
+          events: [
+            {
+              id: 3,
+              at: '2026-11-02T10:00:00+00:00',
+              action: 'scenario.recovered',
+              entity_type: 'scenario',
+              entity_id: 'scenario-two',
+              detail: { fulfillment_rate: 1, residual_units: 0 },
+            },
+            {
+              id: 2,
+              at: '2026-11-02T09:59:00+00:00',
+              action: 'scenario.created',
+              entity_type: 'scenario',
+              entity_id: 'scenario-two',
+              detail: { name: 'Lane closure again', unmet: 500 },
+            },
+            {
+              id: 1,
+              at: '2026-11-01T09:00:00+00:00',
+              action: 'dataset.created',
+              entity_type: 'dataset',
+              entity_id: 'dataset-one',
+              detail: { name: 'Sample Network (bundled)' },
+            },
+          ],
+        }),
+      }),
+    );
+
+    await page.goto('/insights');
+    await expect(page.getByRole('heading', { name: 'Insights' })).toBeVisible();
+    await expect(page.getByText('Scenarios analysed')).toBeVisible();
+    await expect(page.getByText('2 recovered')).toBeVisible();
+    await expect(page.getByText('$3,410')).toBeVisible();
+    await expect(page.getByText('+10.1pp')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Disruption mix' })).toBeVisible();
+    await expect(page.getByText('Dataset loaded')).toBeVisible();
+    await expect(page.getByText('Recovery run', { exact: true })).toBeVisible();
+    await expect(page.locator('.recharts-surface').first()).toBeVisible();
   });
 });
 

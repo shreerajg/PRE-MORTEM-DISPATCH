@@ -65,13 +65,21 @@ real computed figures. Every CTA routes into the console.
 | **Recovered** — contingency RT-13 absorbs the gap | **Dashboard** — KPIs, capacity, scenario history |
 | ![Baseline planner](docs/screenshots/planner.png) | ![Scenario comparison](docs/screenshots/compare.png) |
 | **Planner** — allocations, gaps, risk breakdown | **Compare** — absolute values, deltas, deadline exposure |
+| ![Workspace insights](docs/screenshots/insights.png) | ![Recovery center](docs/screenshots/recovery.png) |
+| **Insights** — server-aggregated trends, mix, recovery economics | **Recovery** — contingency actions, residual gaps, trade-off |
+
+Beyond the six steps, the console manages the workspace: rename or delete datasets (a delete
+cascades through their plans and scenarios in one transaction), delete an unreferenced plan, and
+inspect a server-recorded activity trail. `/insights` aggregates stored scenario history — trend,
+disruption mix, recovery cost/restoration and the audit log — without recomputing plans at read
+time.
 
 Motion on the landing page: scroll-reveal per section, count-up statistics, an animated closed lane,
 drifting aurora gradients, a marquee of modelled constraints, and cursor spotlights on cards. All of
 it respects `prefers-reduced-motion`.
 
-**Routes:** `/` landing · `/login` (auth placeholder) · `/dashboard` · `/datasets` · `/planner` ·
-`/disruption` · `/recovery` · `/compare` · `/exports`
+**Routes:** `/` landing · `/login` (auth/token entry) · `/dashboard` · `/datasets` · `/planner` ·
+`/disruption` · `/recovery` · `/compare` · `/insights` · `/exports`
 
 ---
 
@@ -123,13 +131,13 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 90 passed
+python -m pytest apps/api/tests -q          # 95 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
 # Browser E2E — starts the API and Vite itself, on a separate e2e database
-cd apps/web && npx playwright test          # 11 passed
+cd apps/web && npx playwright test          # 13 passed
 ```
 
 `playwright.config.ts` auto-starts both processes and reuses already-running servers locally, so
@@ -155,6 +163,10 @@ The suite asserts invariants, not just "it returned 200":
 - compound events apply in order; repeated shortages compound, repeated closures do not
 - every unmet row carries a cause whose evidence matches the computed plan
 - deleting a scenario removes its own plans but never the baseline
+- deleting a dataset cascades through its plans and scenarios in one transaction
+- plan deletion is refused while a scenario still references the plan
+- the activity trail records mutations newest-first with structured detail
+- insights aggregate stored KPIs into a chronological trend, disruption mix and recovery economics
 - a severity sweep is monotonic for shortages, preserves volume for delays, and persists nothing
 - hard deadline mode leaves late-only demand unmet; the default reports lateness as a KPI
 - scenarios inherit the baseline's deadline policy
@@ -164,8 +176,9 @@ The suite asserts invariants, not just "it returned 200":
 - the landing page's headline numbers match the demo story, and it has no horizontal overflow at 390 px
 
 List endpoints report the true table count alongside `limit`/`offset`, so the UI never
-mistakes a page for the whole history. `GET /health` reports database reachability, the
-configured solver and whether OR-Tools is actually installed — not just a constant `ok`.
+mistakes a page for the whole history. `GET /health/ready` returns `503` when the database
+probe fails; `/health` stays `200` and reports `degraded` so the UI can render the state.
+`/health/live` checks the process only.
 
 ---
 
@@ -179,21 +192,23 @@ apps/
     app/
       core/        config, error envelope
       domain/      schemas.py — single source of truth (Pydantic)
-      routers/     health, datasets, plans, scenarios, forecast
+      routers/     health, auth, activity, analytics, datasets, plans,
+                   scenarios, forecast
       services/    allocation, disruption, recovery, kpi, normalize,
-                   validation, reporting, ml/{interface,baseline}
+                   validation, reporting, audit, ml/{interface,baseline}
       repo/        SQLite repository
     tests/
   web/
     src/           pages/, components/ui/, lib/api.ts, stores/
     e2e/           Playwright workflow spec
 data/samples/      warehouses · destinations · products · routes · inventory · demand
-docs/              architecture.md · api-contract.md · optimization.md
+docs/              architecture.md · api-contract.md · optimization.md · operations.md
 ```
 
 Full detail — data flow, invariants, objective function, risk formula — in
 [`docs/architecture.md`](docs/architecture.md), [`docs/optimization.md`](docs/optimization.md) and
-[`docs/api-contract.md`](docs/api-contract.md).
+[`docs/api-contract.md`](docs/api-contract.md). Deployment and incident handling live in
+[`docs/operations.md`](docs/operations.md).
 
 ### Modelling decisions worth knowing
 

@@ -107,6 +107,61 @@ export type ListDatasetsResponse = {
   total?: number;
 };
 
+export type ActivityEvent = {
+  id: number;
+  at: string;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  detail: Record<string, unknown>;
+};
+
+export type ActivityResponse = {
+  events: ActivityEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type AnalyticsTrendPoint = {
+  id: string;
+  name: string | null;
+  created_at: string;
+  status: string;
+  disruption_type: string;
+  baseline_fulfillment: number | null;
+  disrupted_fulfillment: number | null;
+  recovered_fulfillment: number | null;
+  cost_delta: number | null;
+  unmet_delta: number | null;
+  recovery_cost: number | null;
+  restored_pp: number | null;
+  residual_units: number | null;
+};
+
+export type AnalyticsByType = {
+  type: string;
+  count: number;
+  avg_unmet_delta: number | null;
+  avg_fulfillment_drop_pp: number | null;
+};
+
+export type AnalyticsOverview = {
+  total_scenarios: number;
+  scenarios_analyzed: number;
+  limit: number;
+  summary: {
+    scenarios_analyzed: number;
+    recovered: number;
+    avg_disrupted_fulfillment: number | null;
+    avg_recovery_cost: number | null;
+    avg_restored_pp: number | null;
+    open_gap_scenarios: number;
+  };
+  by_type: AnalyticsByType[];
+  trend: AnalyticsTrendPoint[];
+};
+
 export type KPISnapshot = {
   total_inventory: number;
   total_demand: number;
@@ -438,6 +493,24 @@ export async function listDatasets(): Promise<ListDatasetsResponse> {
   return request<ListDatasetsResponse>('/api/v1/datasets/');
 }
 
+export async function renameDataset(id: string, name: string): Promise<{ dataset_id: string; name: string }> {
+  return request(`/api/v1/datasets/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteDataset(id: string): Promise<{
+  deleted: boolean;
+  dataset_id: string;
+  name: string;
+  deleted_plans: number;
+  deleted_scenarios: number;
+}> {
+  return request(`/api/v1/datasets/${id}`, { method: 'DELETE' });
+}
+
 export async function importDataset(formData: FormData): Promise<ImportDatasetResponse> {
   return request<ImportDatasetResponse>('/api/v1/datasets/import', {
     method: 'POST',
@@ -482,6 +555,18 @@ export async function createPlan(
 
 export async function getPlan(id: string): Promise<PlanResponse> {
   return request<PlanResponse>(`/api/v1/plans/${id}`);
+}
+
+export async function deletePlan(id: string): Promise<{ deleted: boolean; plan_id: string; type: string }> {
+  return request(`/api/v1/plans/${id}`, { method: 'DELETE' });
+}
+
+export async function listActivity(limit = 20): Promise<ActivityResponse> {
+  return request<ActivityResponse>(`/api/v1/activity?limit=${limit}`);
+}
+
+export async function getAnalytics(limit = 50): Promise<AnalyticsOverview> {
+  return request<AnalyticsOverview>(`/api/v1/analytics/overview?limit=${limit}`);
 }
 
 export async function createScenario(

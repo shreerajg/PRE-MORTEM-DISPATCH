@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   Shield,
+  TrendingUp,
   Zap,
 } from 'lucide-react';
 import { authStatus, getOperatorToken, health } from '../lib/api';
@@ -24,6 +25,7 @@ const nav = [
   { to: '/disruption', label: 'Disruption Lab', icon: Zap, step: 2 },
   { to: '/recovery', label: 'Recovery', icon: HeartPulse, step: 3 },
   { to: '/compare', label: 'Compare', icon: GitCompare, step: 4 },
+  { to: '/insights', label: 'Insights', icon: TrendingUp, step: null },
   { to: '/exports', label: 'Exports', icon: Download, step: 5 },
 ];
 

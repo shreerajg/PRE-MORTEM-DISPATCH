@@ -12,6 +12,7 @@ const Planner = lazy(() => import('./pages/Planner'));
 const DisruptionLab = lazy(() => import('./pages/DisruptionLab'));
 const Recovery = lazy(() => import('./pages/Recovery'));
 const Compare = lazy(() => import('./pages/Compare'));
+const Insights = lazy(() => import('./pages/Insights'));
 const Exports = lazy(() => import('./pages/Exports'));
 
 function PageFallback() {
@@ -54,6 +55,7 @@ export default function App() {
                   <Route path="/disruption" element={<DisruptionLab />} />
                   <Route path="/recovery" element={<Recovery />} />
                   <Route path="/compare" element={<Compare />} />
+                  <Route path="/insights" element={<Insights />} />
                   <Route path="/exports" element={<Exports />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>

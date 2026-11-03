@@ -96,6 +96,8 @@ export default function Recovery() {
       setScenarioId(sid);
       qc.invalidateQueries({ queryKey: ['scenarios'] });
       qc.invalidateQueries({ queryKey: ['compare', sid] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 
@@ -106,12 +108,17 @@ export default function Recovery() {
       setScenarioId(null);
       setRecoveredPlan(null);
       qc.invalidateQueries({ queryKey: ['scenarios'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
 
   const renameMut = useMutation({
     mutationFn: (name: string) => renameScenario(sid, name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['scenarios'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['scenarios'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+    },
   });
 
   const onRename = () => {
