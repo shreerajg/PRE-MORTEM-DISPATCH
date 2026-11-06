@@ -68,6 +68,34 @@ real computed figures. Every CTA routes into the console.
 | ![Workspace insights](docs/screenshots/insights.png) | ![Recovery center](docs/screenshots/recovery.png) |
 | **Insights** — server-aggregated trends, mix, recovery economics | **Recovery** — contingency actions, residual gaps, trade-off |
 
+### Usability that survives a real workspace
+
+The console is built for repeated use, not for one screenshot.
+
+- **No native dialogs.** Renaming or deleting a dataset, plan or scenario opens an accessible
+  modal — focus trapped, `Escape` or a backdrop click closes it, focus returns to the trigger.
+  On a phone the same sheet docks to the bottom edge.
+- **Feedback that stays.** Every mutation ends in a toast naming the object and what changed, and
+  a refused delete surfaces the server's own reason instead of a silent failure.
+- **Search where lists grow.** Datasets filter by name or id, baseline plans filter by plan id,
+  solver or deadline policy, and the scenario selector on Recovery, Compare and Exports is a
+  searchable combobox (type, arrow keys, `Enter`) rather than a native dropdown that hides
+  everything past the first screenful.
+- **Validation before submission.** The Disruption Lab rejects a stock reduction outside 0–100%
+  or a delay outside 0–365 days in the field itself, with `aria-invalid` and an inline message,
+  and disables Simulate / Add / Sweep until the input is legal.
+- **Keyboard and screen-reader path.** A skip link, visible focus rings, `scope="col"` headers,
+  `aria-live` toasts, named icon buttons (`Rename Sample Network (bundled)`) and reduced-motion
+  handling are asserted by the browser suite, not just present in the markup.
+- **Dense tables stay readable** — column headers stick while the allocation and gap lists scroll.
+
+| | |
+|---|---|
+| ![Workspace datasets](docs/screenshots/datasets.png) | ![Rename dialog](docs/screenshots/dataset-dialog.png) |
+| **Datasets** — search, rename and delete in one list | **Modal rename** — focus trapped, `Escape` closes |
+| ![Scenario picker](docs/screenshots/scenario-picker.png) | ![Dialog on a phone](docs/screenshots/dataset-dialog-mobile.png) |
+| **Scenario picker** — searchable and keyboard-driven | **Mobile** — the same dialog docks to the bottom |
+
 Beyond the six steps, the console manages the workspace: rename or delete datasets (a delete
 cascades through their plans and scenarios in one transaction), delete an unreferenced plan, and
 inspect a server-recorded activity trail. `/insights` aggregates stored scenario history — trend,
@@ -137,7 +165,7 @@ python -m pytest apps/api/tests -q          # 95 passed
 cd apps/web && npm run build
 
 # Browser E2E — starts the API and Vite itself, on a separate e2e database
-cd apps/web && npx playwright test          # 13 passed
+cd apps/web && npx playwright test          # 15 passed
 ```
 
 `playwright.config.ts` auto-starts both processes and reuses already-running servers locally, so
@@ -148,6 +176,10 @@ the E2E command needs no terminal setup. Set `E2E_DATABASE_URL` to isolate the r
 builds locally. The GitHub Actions definition is kept at
 [`docs/github-actions-ci.yml`](docs/github-actions-ci.yml) with a one-line enable command — the
 current repository credential lacks the `workflow` OAuth scope needed to push that path.
+
+[`apps/web/scripts/capture-docs.mjs`](apps/web/scripts/capture-docs.mjs) replays the demo path in
+a browser and rewrites the screenshots above, so the images in this README are generated from the
+same code the tests exercise rather than kept by hand.
 
 The suite asserts invariants, not just "it returned 200":
 
@@ -165,6 +197,8 @@ The suite asserts invariants, not just "it returned 200":
 - deleting a scenario removes its own plans but never the baseline
 - deleting a dataset cascades through its plans and scenarios in one transaction
 - plan deletion is refused while a scenario still references the plan
+- rename and delete run through the in-app dialogs, and dataset search narrows the workspace list
+- the first tab stop is the skip link, and `Escape` dismisses a destructive dialog
 - the activity trail records mutations newest-first with structured detail
 - insights aggregate stored KPIs into a chronological trend, disruption mix and recovery economics
 - a severity sweep is monotonic for shortages, preserves volume for delays, and persists nothing
