@@ -144,6 +144,27 @@ export default function Insights() {
     activity.refetch();
   };
 
+  if (analytics.isLoading) {
+    return (
+      <div className="space-y-7" aria-busy="true" aria-label="Loading workspace insights">
+        <PageHeader
+          eyebrow="Analysis · workspace history"
+          title="Insights"
+          description="Loading stored scenario history from the API."
+        />
+        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((index) => (
+            <div key={index} className="h-28 animate-pulse rounded-2xl border border-slate-900/[0.05] bg-white" />
+          ))}
+        </section>
+        <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+          <div className="h-96 animate-pulse rounded-2xl border border-slate-900/[0.05] bg-white" />
+          <div className="h-96 animate-pulse rounded-2xl border border-slate-900/[0.05] bg-white" />
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-7">
       <PageHeader

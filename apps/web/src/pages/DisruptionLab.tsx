@@ -147,6 +147,19 @@ export default function DisruptionLab() {
     if (routes.length && !routes.some((r) => r.id === routeId)) setRouteId(routes[0].id);
   }, [routes, routeId]);
 
+  const reductionNumber = Number(reductionPct);
+  const extraNumber = Number(extraDays);
+  const reductionError =
+    type === 'inventory_shortage' &&
+    (!Number.isFinite(reductionNumber) || reductionNumber < 0 || reductionNumber > 100)
+      ? 'Enter a reduction between 0 and 100.'
+      : null;
+  const extraError =
+    type === 'route_delay' && (!Number.isFinite(extraNumber) || extraNumber < 0 || extraNumber > 365)
+      ? 'Enter 0 to 365 extra days.'
+      : null;
+  const configError = reductionError ?? extraError;
+
   const currentEvent = (): DisruptionRequest => ({
     type,
     params: buildParams(type, { warehouseId, productId, routeId, reductionPct, extraDays }),
@@ -335,9 +348,17 @@ export default function DisruptionLab() {
                     type="number"
                     min={0}
                     max={100}
+                    step="any"
                     value={reductionPct}
                     onChange={(e) => setReductionPct(e.target.value)}
+                    aria-invalid={Boolean(reductionError)}
+                    aria-describedby={reductionError ? 'reduction-pct-error' : undefined}
                   />
+                  {reductionError ? (
+                    <p id="reduction-pct-error" className="mt-1 text-[10.5px] text-red-600">
+                      {reductionError}
+                    </p>
+                  ) : null}
                 </div>
               )}
               {(type === 'route_closure' || type === 'route_delay') && (
@@ -364,9 +385,18 @@ export default function DisruptionLab() {
                     id="extra-days"
                     type="number"
                     min={0}
+                    max={365}
+                    step="any"
                     value={extraDays}
                     onChange={(e) => setExtraDays(e.target.value)}
+                    aria-invalid={Boolean(extraError)}
+                    aria-describedby={extraError ? 'extra-days-error' : undefined}
                   />
+                  {extraError ? (
+                    <p id="extra-days-error" className="mt-1 text-[10.5px] text-red-600">
+                      {extraError}
+                    </p>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -381,11 +411,14 @@ export default function DisruptionLab() {
             ) : null}
 
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-900/[0.06] pt-4">
-              <Button onClick={() => createMut.mutate()} disabled={!baselineId || createMut.isPending}>
+              <Button
+                onClick={() => createMut.mutate()}
+                disabled={!baselineId || Boolean(configError) || createMut.isPending}
+              >
                 <Zap className="h-4 w-4" />
                 {createMut.isPending ? 'Simulating…' : 'Simulate disruption'}
               </Button>
-              <Button variant="outline" onClick={addEvent} disabled={events.length >= MAX_EVENTS}>
+              <Button variant="outline" onClick={addEvent} disabled={events.length >= MAX_EVENTS || Boolean(configError)}>
                 <Plus className="h-4 w-4" />
                 Add to scenario
               </Button>
@@ -503,7 +536,11 @@ export default function DisruptionLab() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={() => sweepMut.mutate()} disabled={!baselineId || sweepMut.isPending}>
+              <Button
+                variant="outline"
+                onClick={() => sweepMut.mutate()}
+                disabled={!baselineId || Boolean(configError) || sweepMut.isPending}
+              >
                 {sweepMut.isPending ? 'Solving points…' : 'Run sensitivity sweep'}
               </Button>
               <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-slate-400">

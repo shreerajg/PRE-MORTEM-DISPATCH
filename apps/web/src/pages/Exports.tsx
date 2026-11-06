@@ -5,11 +5,10 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { PageHeader } from '../components/PageHeader';
+import { ScenarioPicker } from '../components/ScenarioPicker';
 import { compareScenario, exportScenario, listScenarios } from '../lib/api';
-import { disruptionLabel, scenarioTitle } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const CONTENTS = [
@@ -96,26 +95,19 @@ export default function Exports() {
           <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="space-y-4">
               <div>
-                <label htmlFor="export-scenario" className="mb-1.5 block text-[11px] font-medium text-slate-600">
-                  Scenario
-                </label>
-                <Select
+                <ScenarioPicker
                   id="export-scenario"
+                  label="Scenario"
                   value={sid}
-                  onChange={(e) => {
-                    setSid(e.target.value);
-                    setScenarioId(e.target.value);
+                  scenarios={scenarios}
+                  onChange={(value) => {
+                    setSid(value);
+                    setScenarioId(value);
                     setDone(null);
                     setError(null);
                   }}
-                >
-                  <option value="">Select a scenario…</option>
-                  {scenarios.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {scenarioTitle(s)} · {disruptionLabel(s.disruption)} · {s.status}
-                    </option>
-                  ))}
-                </Select>
+                  emptyHint="No scenarios yet — create one in the Disruption Lab."
+                />
                 {!scenarios.length ? (
                   <p className="mt-1.5 text-[11px] text-amber-600">
                     No scenarios yet —{' '}

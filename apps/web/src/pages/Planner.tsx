@@ -9,6 +9,7 @@ import {
   Clock3,
   Info,
   Play,
+  Search,
   Sparkles,
   Trash2,
 } from 'lucide-react';
@@ -16,6 +17,9 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { ConfirmDialog } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { notify } from '../components/ui/toast';
 import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { PageHeader } from '../components/PageHeader';
@@ -33,6 +37,7 @@ export default function Planner() {
   const { datasetId, setDatasetId, planId, setPlanId, setBaselinePlan } = useAppStore();
   const [solver, setSolver] = React.useState<string>('');
   const [respectDeadlines, setRespectDeadlines] = React.useState(false);
+  const [planToDelete, setPlanToDelete] = React.useState<PlanSummary | null>(null);
 
   const { data: datasets } = useQuery({ queryKey: ['datasets'], queryFn: listDatasets });
   const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: () => listPlans(25) });
@@ -50,6 +55,16 @@ export default function Planner() {
 
   const baselines = (plansData?.plans ?? []).filter((p) => p.type === 'baseline');
   const activePlanId = planId ?? baselines[0]?.id ?? null;
+  const [planSearch, setPlanSearch] = React.useState('');
+  const planFilter = planSearch.trim().toLowerCase();
+  const filteredBaselines = planFilter
+    ? baselines.filter((p) =>
+        [p.id, p.solver, p.solver_status ?? '', p.constraints?.respect_deadlines ? 'enforced' : 'kpi only']
+          .join(' ')
+          .toLowerCase()
+          .includes(planFilter),
+      )
+    : baselines;
 
   React.useEffect(() => {
     if (!planId && baselines.length) setPlanId(baselines[0].id);
@@ -66,28 +81,32 @@ export default function Planner() {
     onSuccess: (res) => {
       setPlanId(res.id);
       setBaselinePlan(res);
+      notify(
+        'Baseline solved',
+        `${res.allocations.length} allocations · ${(res.kpis.fulfillment_rate * 100).toFixed(1)}% fulfilled`,
+        'success',
+      );
       qc.invalidateQueries({ queryKey: ['plans'] });
       qc.invalidateQueries({ queryKey: ['activity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (err) => notify('Baseline failed', String((err as Error).message), 'danger'),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deletePlan(id),
     onSuccess: (res) => {
+      setPlanToDelete(null);
       if (res.plan_id === planId) setPlanId(null);
+      notify('Plan deleted', `${res.plan_id.slice(0, 8)} removed from the workspace.`, 'success');
       qc.invalidateQueries({ queryKey: ['plans'] });
       qc.invalidateQueries({ queryKey: ['activity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (err) => notify('Delete blocked', String((err as Error).message), 'warning'),
   });
 
-  const onDeletePlan = (p: PlanSummary) => {
-    const confirmed = window.confirm(
-      `Delete baseline plan ${p.id.slice(0, 8)}?\n\nScenarios that reference it must be deleted first.`,
-    );
-    if (confirmed) deleteMut.mutate(p.id);
-  };
+  const onDeletePlan = (p: PlanSummary) => setPlanToDelete(p);
 
   const plan = planQuery.data;
   const kpis = plan?.kpis;
@@ -232,10 +251,29 @@ export default function Planner() {
       {baselines.length > 1 ? (
         <Card>
           <CardHeader>
-            <CardTitle>Baseline plans</CardTitle>
+            <CardTitle className="flex items-center justify-between gap-3">
+              <span>Baseline plans</span>
+              <Badge variant="secondary">{filteredBaselines.length}</Badge>
+            </CardTitle>
             <CardDescription>Select which solved plan to inspect and branch from.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                type="search"
+                value={planSearch}
+                onChange={(event) => setPlanSearch(event.target.value)}
+                aria-label="Search baseline plans"
+                placeholder="Search by plan id, solver or deadline policy"
+                className="pl-9"
+              />
+            </div>
+            {!filteredBaselines.length ? (
+              <p className="py-6 text-center text-[13px] text-slate-500">
+                No baseline plan matches “{planSearch.trim()}”.
+              </p>
+            ) : (
             <div className="max-h-[22rem] overflow-auto">
               <Table>
                 <TableHeader>
@@ -251,7 +289,7 @@ export default function Planner() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {baselines.map((p) => (
+                  {filteredBaselines.map((p) => (
                     <TableRow key={p.id} className={p.id === activePlanId ? 'bg-emerald-50/30' : undefined}>
                       <TableCell className="font-mono text-[11px]">{p.id.slice(0, 8)}</TableCell>
                       <TableCell className="text-[11.5px] text-slate-600">
@@ -287,14 +325,9 @@ export default function Planner() {
                 </TableBody>
               </Table>
             </div>
+            )}
           </CardContent>
         </Card>
-      ) : null}
-
-      {deleteMut.isError ? (
-        <div className="flex items-start gap-2 rounded-xl border border-red-600/15 bg-red-50 p-3 text-[12.5px] text-red-700">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {String((deleteMut.error as Error).message)}
-        </div>
       ) : null}
 
       {!plan ? (
@@ -505,6 +538,26 @@ export default function Planner() {
           ) : null}
         </>
       )}
+
+      <ConfirmDialog
+        open={!!planToDelete}
+        title="Delete baseline plan"
+        description={
+          planToDelete ? (
+            <>
+              Plan <strong>{planToDelete.id.slice(0, 8)}</strong> will be removed. If a scenario references it,
+              the delete is rejected and the scenario remains intact.
+            </>
+          ) : null
+        }
+        confirmLabel="Delete plan"
+        destructive
+        busy={deleteMut.isPending}
+        onConfirm={() => {
+          if (planToDelete) deleteMut.mutate(planToDelete.id);
+        }}
+        onClose={() => setPlanToDelete(null)}
+      />
     </div>
   );
 }

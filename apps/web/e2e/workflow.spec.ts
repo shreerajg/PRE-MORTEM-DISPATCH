@@ -154,13 +154,25 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     await expect(page.getByLabel('Scenario', { exact: true })).toContainText(scenarioName);
     await expect(page.getByText(`Scenario ${scenarioName}`)).toBeVisible();
 
+    // The searchable picker should find the run without scrolling a native list.
+    await page.getByLabel('Scenario', { exact: true }).click();
+    await page.getByLabel('Search scenarios').fill(scenarioName);
+    await expect(page.getByRole('option', { name: new RegExp(scenarioName) })).toBeVisible();
+    await page.keyboard.press('Escape');
+
     const renamed = `${scenarioName} renamed`;
-    page.once('dialog', (dialog) => dialog.accept(renamed));
     await page.getByRole('button', { name: 'Rename scenario' }).click();
+    const renameDialog = page.getByRole('dialog', { name: 'Rename scenario' });
+    await renameDialog.getByLabel('Scenario name').fill(renamed);
+    await renameDialog.getByRole('button', { name: 'Save name' }).click();
+    await expect(page.getByText('Scenario renamed')).toBeVisible();
     await expect(page.getByLabel('Scenario', { exact: true })).toContainText(renamed);
 
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Delete scenario' }).click();
+    const deleteDialog = page.getByRole('dialog', { name: 'Delete scenario' });
+    await expect(deleteDialog.getByText(/baseline plan is kept/i)).toBeVisible();
+    await deleteDialog.getByRole('button', { name: 'Delete scenario' }).click();
+    await expect(page.getByText('Scenario deleted')).toBeVisible();
     await expect(page.getByLabel('Scenario', { exact: true })).not.toContainText(renamed);
   });
 
@@ -178,19 +190,53 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
     const row = page.getByRole('row', { name: new RegExp(original) });
     await expect(row).toBeVisible();
 
-    page.once('dialog', (dialog) => dialog.accept(renamed));
     await row.getByRole('button', { name: `Rename ${original}` }).click();
-    await expect(page.getByText(/Dataset renamed to/)).toBeVisible();
+    const renameDialog = page.getByRole('dialog', { name: 'Rename dataset' });
+    await renameDialog.getByLabel('Dataset name').fill(renamed);
+    await renameDialog.getByRole('button', { name: 'Save name' }).click();
+    await expect(page.getByText('Dataset renamed')).toBeVisible();
     const renamedRow = page.getByRole('row', { name: new RegExp(renamed) });
     await expect(renamedRow).toBeVisible();
 
-    page.once('dialog', (dialog) => dialog.accept());
     await renamedRow.getByRole('button', { name: `Delete ${renamed}` }).click();
+    const deleteDialog = page.getByRole('dialog', { name: 'Delete dataset' });
+    await expect(deleteDialog.getByText(/cannot be undone/i)).toBeVisible();
+    await deleteDialog.getByRole('button', { name: 'Delete dataset' }).click();
     await expect(page.getByText(/Deleted “/)).toBeVisible();
     await expect(page.getByRole('row', { name: new RegExp(renamed) })).toHaveCount(0);
 
     const gone = await request.get(`/api/v1/datasets/${datasetId}`);
     expect(gone.status()).toBe(404);
+  });
+
+  test('dataset search narrows the workspace list', async ({ page }) => {
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    const search = page.getByLabel('Search datasets');
+    await search.fill('zzz-no-such-dataset');
+    await expect(page.getByText(/No dataset matches/)).toBeVisible();
+
+    await search.fill('Sample Network');
+    await expect(page.getByRole('row', { name: /Sample Network/ }).first()).toBeVisible();
+  });
+
+  test('keyboard users can skip to content and dismiss a destructive dialog', async ({ page }) => {
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    // Reload so the skip link is genuinely the first tab stop.
+    await page.reload();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
+
+    await page.getByRole('button', { name: /^Rename / }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Rename dataset' });
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
   });
 
   test('empty states explain what to do next', async ({ page }) => {

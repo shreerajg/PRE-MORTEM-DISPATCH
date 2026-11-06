@@ -583,8 +583,11 @@ export async function createScenario(
   });
 }
 
-export async function renameScenario(id: string, name: string): Promise<void> {
-  await request(`/api/v1/scenarios/${id}`, {
+export async function renameScenario(
+  id: string,
+  name: string,
+): Promise<{ scenario: ScenarioDetail['scenario'] }> {
+  return request(`/api/v1/scenarios/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),

@@ -17,10 +17,12 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Select } from '../components/ui/select';
+import { ConfirmDialog, PromptDialog } from '../components/ui/dialog';
+import { notify } from '../components/ui/toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { PageHeader } from '../components/PageHeader';
 import { PlanJourney } from '../components/PlanJourney';
+import { ScenarioPicker } from '../components/ScenarioPicker';
 import { CauseBadge } from '../components/CauseBadge';
 import {
   compareScenario,
@@ -65,6 +67,7 @@ export default function Recovery() {
   const qc = useQueryClient();
   const { scenarioId, setScenarioId, setRecoveredPlan } = useAppStore();
   const [sid, setSid] = React.useState(scenarioId ?? '');
+  const [dialog, setDialog] = React.useState<'rename' | 'delete' | null>(null);
 
   const { data: scenarioList } = useQuery({ queryKey: ['scenarios'], queryFn: () => listScenarios(50) });
   const scenarios = scenarioList?.scenarios ?? [];
@@ -94,46 +97,53 @@ export default function Recovery() {
     onSuccess: (res) => {
       setRecoveredPlan(res.recovered_plan);
       setScenarioId(sid);
+      notify(
+        'Recovery complete',
+        `${res.recovery_actions.length} action(s) · ${Math.round(res.recovered_plan.kpis.unmet)} residual units`,
+        'success',
+      );
       qc.invalidateQueries({ queryKey: ['scenarios'] });
       qc.invalidateQueries({ queryKey: ['compare', sid] });
       qc.invalidateQueries({ queryKey: ['activity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (err) => notify('Recovery failed', String((err as Error).message), 'danger'),
   });
 
   const deleteMut = useMutation({
     mutationFn: () => deleteScenario(sid),
     onSuccess: () => {
+      setDialog(null);
       setSid('');
       setScenarioId(null);
       setRecoveredPlan(null);
+      notify('Scenario deleted', 'Its disrupted and recovered plans are gone; the baseline remains.', 'success');
       qc.invalidateQueries({ queryKey: ['scenarios'] });
       qc.invalidateQueries({ queryKey: ['activity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (err) => notify('Delete failed', String((err as Error).message), 'danger'),
   });
 
   const renameMut = useMutation({
     mutationFn: (name: string) => renameScenario(sid, name),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      setDialog(null);
+      notify('Scenario renamed', `“${res.scenario.name}” is now the selected run.`, 'success');
       qc.invalidateQueries({ queryKey: ['scenarios'] });
       qc.invalidateQueries({ queryKey: ['activity'] });
     },
+    onError: (err) => notify('Rename failed', String((err as Error).message), 'danger'),
   });
 
   const onRename = () => {
     if (!sid) return;
-    const current = scenarios.find((s) => s.id === sid)?.name ?? '';
-    const next = window.prompt('Rename scenario', current);
-    if (next?.trim()) renameMut.mutate(next.trim());
+    setDialog('rename');
   };
 
   const onDelete = () => {
     if (!sid) return;
-    const confirmed = window.confirm(
-      'Delete this scenario and its disrupted/recovered plans? The baseline plan is kept.',
-    );
-    if (confirmed) deleteMut.mutate();
+    setDialog('delete');
   };
 
   const active = scenarios.find((s) => s.id === sid) as ScenarioSummary | undefined;
@@ -210,18 +220,14 @@ export default function Recovery() {
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
             <div className="md:col-span-2">
-              <label htmlFor="recovery-scenario" className="mb-1.5 block text-[11px] font-medium text-slate-600">
-                Scenario
-              </label>
-              <Select id="recovery-scenario" value={sid} onChange={(e) => setSid(e.target.value)}>
-                <option value="">Select a scenario…</option>
-                {scenarios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {scenarioTitle(s)} · {disruptionLabel(s.disruption)} · {s.status} ·{' '}
-                    {s.created_at.slice(0, 16).replace('T', ' ')}
-                  </option>
-                ))}
-              </Select>
+              <ScenarioPicker
+                id="recovery-scenario"
+                label="Scenario"
+                value={sid}
+                scenarios={scenarios}
+                onChange={setSid}
+                emptyHint="No scenarios yet — create one in the Disruption Lab."
+              />
               {!scenarios.length ? (
                 <div className="mt-1.5 text-[11px] text-amber-600">
                   No scenarios yet —{' '}
@@ -520,6 +526,38 @@ export default function Recovery() {
           </CardContent>
         </Card>
       </div>
+
+      <PromptDialog
+        open={dialog === 'rename'}
+        title="Rename scenario"
+        description="Names make runs findable in Compare, Exports and Insights."
+        label="Scenario name"
+        initialValue={active?.name ?? scenarioTitle({ id: sid })}
+        confirmLabel="Save name"
+        busy={renameMut.isPending}
+        error={renameMut.isError ? String((renameMut.error as Error).message) : null}
+        onSubmit={(name) => renameMut.mutate(name)}
+        onClose={() => setDialog(null)}
+      />
+      <ConfirmDialog
+        open={dialog === 'delete'}
+        title="Delete scenario"
+        description={
+          active ? (
+            <>
+              <strong>{scenarioTitle(active)}</strong> and its disrupted/recovered plans will be removed. The
+              baseline plan is kept.
+            </>
+          ) : (
+            'This scenario and its derived plans will be removed. The baseline plan is kept.'
+          )
+        }
+        confirmLabel="Delete scenario"
+        destructive
+        busy={deleteMut.isPending}
+        onConfirm={() => deleteMut.mutate()}
+        onClose={() => setDialog(null)}
+      />
     </div>
   );
 }

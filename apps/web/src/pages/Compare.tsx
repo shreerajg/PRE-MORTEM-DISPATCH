@@ -14,14 +14,14 @@ import { ArrowRight, Clock, GitCompare, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { Select } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
 import { PageHeader } from '../components/PageHeader';
 import { PlanJourney } from '../components/PlanJourney';
+import { ScenarioPicker } from '../components/ScenarioPicker';
 import { ChartTooltip } from '../components/ChartTooltip';
 import { compareScenario, listScenarios } from '../lib/api';
-import { cn, disruptionLabel, scenarioTitle, solverStatusTone } from '../lib/utils';
+import { cn, solverStatusTone } from '../lib/utils';
 import { useAppStore } from '../stores/appStore';
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -181,25 +181,18 @@ export default function Compare() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <label htmlFor="compare-scenario" className="mb-1.5 block text-[11px] font-medium text-slate-600">
-            Scenario
-          </label>
-          <Select
+          <ScenarioPicker
             id="compare-scenario"
+            label="Scenario"
             value={sid}
-            onChange={(e) => {
-              setSid(e.target.value);
-              setScenarioId(e.target.value);
+            scenarios={scenarios}
+            onChange={(value) => {
+              setSid(value);
+              setScenarioId(value);
             }}
             className="max-w-xl"
-          >
-            <option value="">Select a scenario…</option>
-            {scenarios.map((s) => (
-              <option key={s.id} value={s.id}>
-                {scenarioTitle(s)} · {disruptionLabel(s.disruption)} · {s.status}
-              </option>
-            ))}
-          </Select>
+            emptyHint="No scenarios yet — create one in the Disruption Lab."
+          />
           {!scenarios.length ? (
             <p className="mt-2 text-[11px] text-amber-600">
               No scenarios yet —{' '}

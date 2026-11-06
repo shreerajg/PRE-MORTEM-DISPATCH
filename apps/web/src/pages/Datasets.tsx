@@ -11,12 +11,16 @@ import {
   Layers,
   Pencil,
   RefreshCw,
+  Search,
   Trash2,
   Upload,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { ConfirmDialog, PromptDialog } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { notify } from '../components/ui/toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { PageHeader } from '../components/PageHeader';
 import {
@@ -60,7 +64,10 @@ export default function Datasets() {
     Object.fromEntries(TABLES.map((t) => [t, null])),
   );
   const [lastImport, setLastImport] = React.useState<ImportDatasetResponse | null>(null);
-  const [notice, setNotice] = React.useState<string | null>(null);
+  const [datasetQuery, setDatasetQuery] = React.useState('');
+  const [dialog, setDialog] = React.useState<
+    { mode: 'rename'; dataset: DatasetSummary } | { mode: 'delete'; dataset: DatasetSummary } | null
+  >(null);
 
   const { data: listData, isFetching: listLoading } = useQuery({
     queryKey: ['datasets'],
@@ -80,7 +87,7 @@ export default function Datasets() {
 
   const onImported = (res: ImportDatasetResponse) => {
     setLastImport(res);
-    setNotice(null);
+    setDialog(null);
     setDatasetId(res.dataset_id);
     setPlanId(null);
     qc.invalidateQueries({ queryKey: ['datasets'] });
@@ -94,19 +101,24 @@ export default function Datasets() {
   const renameMut = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => renameDataset(id, name),
     onSuccess: (res) => {
-      setNotice(`Dataset renamed to “${res.name}”.`);
+      setDialog(null);
+      notify('Dataset renamed', `“${res.name}” is now the workspace label.`, 'success');
       qc.invalidateQueries({ queryKey: ['datasets'] });
       qc.invalidateQueries({ queryKey: ['dataset', res.dataset_id] });
       qc.invalidateQueries({ queryKey: ['activity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (err) => notify('Rename failed', String((err as Error).message), 'danger'),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteDataset(id),
     onSuccess: (res) => {
-      setNotice(
-        `Deleted “${res.name}” · ${res.deleted_plans} plan(s) · ${res.deleted_scenarios} scenario(s).`,
+      setDialog(null);
+      notify(
+        `Deleted “${res.name}”`,
+        `${res.deleted_plans} plan(s) and ${res.deleted_scenarios} scenario(s) removed.`,
+        'success',
       );
       if (res.dataset_id === datasetId) {
         setDatasetId(null);
@@ -119,22 +131,15 @@ export default function Datasets() {
       qc.invalidateQueries({ queryKey: ['activity'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (err) => notify('Delete failed', String((err as Error).message), 'danger'),
   });
 
   const busy = uploadMut.isPending || sampleMut.isPending || renameMut.isPending || deleteMut.isPending;
   const error = uploadMut.error ?? sampleMut.error ?? renameMut.error ?? deleteMut.error;
 
-  const onRename = (ds: DatasetSummary) => {
-    const next = window.prompt('Rename dataset', ds.name);
-    if (next?.trim()) renameMut.mutate({ id: ds.id, name: next.trim() });
-  };
+  const onRename = (ds: DatasetSummary) => setDialog({ mode: 'rename', dataset: ds });
 
-  const onDelete = (ds: DatasetSummary) => {
-    const confirmed = window.confirm(
-      `Delete “${ds.name}”?\n\nEvery plan and scenario derived from it will also be deleted. This cannot be undone.`,
-    );
-    if (confirmed) deleteMut.mutate(ds.id);
-  };
+  const onDelete = (ds: DatasetSummary) => setDialog({ mode: 'delete', dataset: ds });
 
   const canUpload = TABLES.every((t) => files[t]);
 
@@ -143,6 +148,12 @@ export default function Datasets() {
     for (const t of TABLES) if (files[t]) fd.append(t, files[t]!);
     uploadMut.mutate(fd);
   };
+
+  const allDatasets = listData?.datasets ?? [];
+  const datasetFilter = datasetQuery.trim().toLowerCase();
+  const filteredDatasets = datasetFilter
+    ? allDatasets.filter((ds) => `${ds.name} ${ds.id}`.toLowerCase().includes(datasetFilter))
+    : allDatasets;
 
   const validation: ValidationReport | undefined =
     lastImport?.validation_report ??
@@ -232,21 +243,6 @@ export default function Datasets() {
           <CardContent className="flex items-center gap-2 p-4 text-[12.5px] text-emerald-800">
             <CheckCircle2 className="h-4 w-4" /> Dataset imported — {lastImport.dataset_id.slice(0, 8)} · proceed to the
             Planner.
-          </CardContent>
-        </Card>
-      ) : null}
-      {notice && !error ? (
-        <Card className="border-slate-900/[0.07] bg-white">
-          <CardContent className="flex flex-wrap items-center gap-2 p-4 text-[12.5px] text-slate-700">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            <span className="flex-1">{notice}</span>
-            <button
-              type="button"
-              onClick={() => setNotice(null)}
-              className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-slate-400 transition-colors hover:text-slate-800"
-            >
-              Dismiss
-            </button>
           </CardContent>
         </Card>
       ) : null}
@@ -435,12 +431,35 @@ export default function Datasets() {
             <CardTitle>Datasets in this workspace</CardTitle>
             <CardDescription>Select one to make it the active planning context.</CardDescription>
           </div>
-          <Badge variant="secondary">{listData?.datasets?.length ?? 0} datasets</Badge>
+          <Badge variant="secondary">
+            {filteredDatasets.length}
+            {datasetFilter && filteredDatasets.length !== allDatasets.length
+              ? ` of ${allDatasets.length}`
+              : ''}{' '}
+            dataset{allDatasets.length === 1 ? '' : 's'}
+          </Badge>
         </CardHeader>
-        <CardContent>
-          {!listData?.datasets?.length ? (
+        <CardContent className="space-y-3">
+          {allDatasets.length ? (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                type="search"
+                value={datasetQuery}
+                onChange={(event) => setDatasetQuery(event.target.value)}
+                placeholder="Search by dataset name or id"
+                aria-label="Search datasets"
+                className="pl-9"
+              />
+            </div>
+          ) : null}
+          {!allDatasets.length ? (
             <div className="py-6 text-center text-[13px] text-slate-500">
               No datasets yet — load the sample to begin.
+            </div>
+          ) : !filteredDatasets.length ? (
+            <div className="py-6 text-center text-[13px] text-slate-500">
+              No dataset matches “{datasetQuery.trim()}”.
             </div>
           ) : (
             <div className="max-h-[26rem] overflow-auto">
@@ -455,7 +474,7 @@ export default function Datasets() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {listData.datasets.map((ds) => (
+                  {filteredDatasets.map((ds) => (
                     <TableRow key={ds.id} className={ds.id === datasetId ? 'bg-emerald-50/30' : undefined}>
                       <TableCell>
                         <div className="text-[12px] font-medium text-slate-800">{ds.name}</div>
@@ -479,7 +498,6 @@ export default function Datasets() {
                               setDatasetId(ds.id);
                               setPlanId(null);
                               setLastImport(null);
-                              setNotice(null);
                             }}
                           >
                             {ds.id === datasetId ? 'Active' : 'Use'}
@@ -560,6 +578,40 @@ export default function Datasets() {
           </CardContent>
         </Card>
       ) : null}
+
+      <PromptDialog
+        open={dialog?.mode === 'rename'}
+        title="Rename dataset"
+        description="The label appears in plan pickers and scenario history."
+        label="Dataset name"
+        initialValue={dialog?.mode === 'rename' ? dialog.dataset.name : ''}
+        confirmLabel="Save name"
+        busy={renameMut.isPending}
+        error={renameMut.isError ? String((renameMut.error as Error).message) : null}
+        onSubmit={(name) => {
+          if (dialog?.mode === 'rename') renameMut.mutate({ id: dialog.dataset.id, name });
+        }}
+        onClose={() => setDialog(null)}
+      />
+      <ConfirmDialog
+        open={dialog?.mode === 'delete'}
+        title="Delete dataset"
+        description={
+          dialog?.mode === 'delete' ? (
+            <>
+              Every plan and scenario derived from <strong>{dialog.dataset.name}</strong> will be deleted in one
+              transaction. This cannot be undone.
+            </>
+          ) : null
+        }
+        confirmLabel="Delete dataset"
+        destructive
+        busy={deleteMut.isPending}
+        onConfirm={() => {
+          if (dialog?.mode === 'delete') deleteMut.mutate(dialog.dataset.id);
+        }}
+        onClose={() => setDialog(null)}
+      />
     </div>
   );
 }
