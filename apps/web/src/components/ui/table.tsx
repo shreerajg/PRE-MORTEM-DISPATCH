@@ -3,7 +3,9 @@ import { cn } from '../../lib/utils';
 
 export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="w-full overflow-auto rounded-xl border border-slate-900/[0.07] bg-white">
+    // The height ceiling is what makes the sticky header meaningful: without a
+    // bounded scroll box the container is as tall as the table and nothing sticks.
+    <div className="max-h-[min(68vh,620px)] w-full overflow-auto rounded-xl border border-slate-900/[0.07] bg-white">
       <table className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   );
@@ -12,7 +14,10 @@ export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableEle
 export function TableHeader({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <thead
-      className={cn('[&_tr]:border-b [&_tr]:border-slate-900/[0.06] bg-slate-50/70', className)}
+      className={cn(
+        '[&_tr]:border-b [&_tr]:border-slate-900/[0.06] [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50 [&_th]:shadow-[0_1px_0_rgba(15,23,42,0.06)]',
+        className,
+      )}
       {...props}
     />
   );
@@ -37,6 +42,7 @@ export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTable
 export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
+      scope="col"
       className={cn(
         'h-9 px-3 text-left font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400',
         className,

@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { ToastViewport } from './components/ui/toast';
 import Landing from './pages/Landing';
 import LoginPlaceholder from './pages/LoginPlaceholder';
 
@@ -36,6 +37,7 @@ function PageFallback() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ToastViewport />
       <Routes>
         {/* Landing page is full-bleed: it sits outside the console shell */}
         <Route path="/" element={<Landing />} />

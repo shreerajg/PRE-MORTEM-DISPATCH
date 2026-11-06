@@ -84,6 +84,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper text-slate-900">
+      <a
+        href="#main-content"
+        className="sr-only z-[100] rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to main content
+      </a>
       {/* Dark operations rail — the console's anchor */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[252px] flex-col overflow-hidden bg-ink-900 text-slate-300 md:flex">
         <div aria-hidden className="noise-rail pointer-events-none absolute inset-0 opacity-[0.035]" />
@@ -266,7 +272,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           })}
         </div>
 
-        <main className="relative min-h-[calc(100vh-4rem)]">
+        <main id="main-content" className="relative min-h-[calc(100vh-4rem)]">
           <div aria-hidden className="panel-grid pointer-events-none absolute inset-x-0 top-0 h-[420px]" />
           <div className="relative mx-auto max-w-[1500px] px-4 pb-16 pt-6 md:px-8 md:pt-8">
             <div key={location.pathname} className="animate-page-in">
