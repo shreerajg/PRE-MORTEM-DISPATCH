@@ -77,7 +77,7 @@ export default function DisruptionLab() {
   const qc = useQueryClient();
   const { planId, datasetId, setScenarioId, setDisruptedPlan, setRecoveredPlan } = useAppStore();
 
-  const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: () => listPlans(50) });
+  const { data: plansData } = useQuery({ queryKey: ['plans', 50], queryFn: () => listPlans(50) });
   const baselinePlans = React.useMemo(
     () => (plansData?.plans ?? []).filter((p) => p.type === 'baseline'),
     [plansData],

@@ -116,7 +116,7 @@ export default function Insights() {
     retry: false,
   });
   const activity = useQuery({
-    queryKey: ['activity'],
+    queryKey: ['activity', 12],
     queryFn: () => listActivity(12),
     retry: false,
   });

@@ -453,3 +453,72 @@ test.describe('Landing page', () => {
     expect(overflow).toBeLessThanOrEqual(1);
   });
 });
+
+test.describe('Console navigation', () => {
+  test('the fixed rail reads live workspace state and points at the next step', async ({ page }) => {
+    const rail = page.locator('aside');
+
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+    await expect(rail.getByText(/Active · Sample Network/)).toBeVisible();
+
+    await page.goto('/planner');
+    await page.getByRole('button', { name: /generate baseline/i }).click();
+    await expect(page.getByText(/Baseline plan created/i)).toBeVisible({ timeout: 20_000 });
+    await expect(rail.getByText(/100\.0% fulfilled · greedy/)).toBeVisible();
+
+    await page.goto('/disruption');
+    await page.getByLabel('Disruption type').selectOption('route_closure');
+    await page.getByLabel('Route').selectOption('RT-03');
+    await page.getByRole('button', { name: /simulate disruption/i }).click();
+    await expect(page.getByText(/Route closure: set route RT-03 available=False/)).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.goto('/recovery');
+    await page.getByRole('button', { name: /run recovery/i }).click();
+    await expect(page.getByText('Recovery actions')).toBeVisible({ timeout: 20_000 });
+    await expect(rail.getByText(/recovered plans?/)).toBeVisible();
+
+    // The call to action follows the workspace, not the route you happen to be on.
+    await rail.getByRole('link', { name: 'Compare the plans' }).click();
+    await expect(page).toHaveURL(/\/compare$/);
+    await expect(page.getByText('KPI comparison')).toBeVisible();
+
+    await page.evaluate(() => window.scrollTo(0, 600));
+    expect((await rail.boundingBox())?.y).toBe(0);
+  });
+
+  test('the phone menu is a fixed drawer with the same live content', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    const menuButton = page.getByRole('button', { name: 'Open console menu' });
+    const drawer = page.getByRole('dialog', { name: 'Pre-Mortem Dispatch' });
+
+    await menuButton.click();
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole('navigation', { name: 'Primary' })).toBeVisible();
+    await expect(drawer.getByText(/Active · Sample Network/)).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+    await expect(menuButton).toBeFocused();
+
+    await menuButton.click();
+    await drawer.getByRole('link', { name: /Planner/ }).click();
+    await expect(page).toHaveURL(/\/planner$/);
+    await expect(drawer).toHaveCount(0);
+
+    await page.evaluate(() => window.scrollTo(0, 800));
+    await expect(menuButton).toBeVisible();
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+});

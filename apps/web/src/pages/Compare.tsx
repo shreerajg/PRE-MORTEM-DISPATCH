@@ -59,7 +59,7 @@ export default function Compare() {
   const { scenarioId, setScenarioId } = useAppStore();
   const [sid, setSid] = React.useState(scenarioId ?? '');
 
-  const { data: scenarioList } = useQuery({ queryKey: ['scenarios'], queryFn: () => listScenarios(50) });
+  const { data: scenarioList } = useQuery({ queryKey: ['scenarios', 50], queryFn: () => listScenarios(50) });
   const scenarios = scenarioList?.scenarios ?? [];
 
   React.useEffect(() => {

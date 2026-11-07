@@ -69,7 +69,7 @@ export default function Recovery() {
   const [sid, setSid] = React.useState(scenarioId ?? '');
   const [dialog, setDialog] = React.useState<'rename' | 'delete' | null>(null);
 
-  const { data: scenarioList } = useQuery({ queryKey: ['scenarios'], queryFn: () => listScenarios(50) });
+  const { data: scenarioList } = useQuery({ queryKey: ['scenarios', 50], queryFn: () => listScenarios(50) });
   const scenarios = scenarioList?.scenarios ?? [];
 
   React.useEffect(() => {

@@ -25,7 +25,7 @@ export default function Exports() {
   const [error, setError] = React.useState<string | null>(null);
   const [done, setDone] = React.useState<string | null>(null);
 
-  const { data: scenarioList } = useQuery({ queryKey: ['scenarios'], queryFn: () => listScenarios(50) });
+  const { data: scenarioList } = useQuery({ queryKey: ['scenarios', 50], queryFn: () => listScenarios(50) });
   const scenarios = scenarioList?.scenarios ?? [];
 
   React.useEffect(() => {

@@ -43,8 +43,8 @@ export default function Dashboard() {
   const { planId, setPlanId } = useAppStore();
 
   const { data: h } = useQuery({ queryKey: ['health'], queryFn: health, retry: false });
-  const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: () => listPlans(25) });
-  const { data: scenarioData } = useQuery({ queryKey: ['scenarios'], queryFn: () => listScenarios(10) });
+  const { data: plansData } = useQuery({ queryKey: ['plans', 25], queryFn: () => listPlans(25) });
+  const { data: scenarioData } = useQuery({ queryKey: ['scenarios', 10], queryFn: () => listScenarios(10) });
 
   const baselines = (plansData?.plans ?? []).filter((p) => p.type === 'baseline');
   const activePlanId = planId ?? baselines[0]?.id ?? null;

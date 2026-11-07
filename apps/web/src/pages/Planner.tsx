@@ -40,7 +40,7 @@ export default function Planner() {
   const [planToDelete, setPlanToDelete] = React.useState<PlanSummary | null>(null);
 
   const { data: datasets } = useQuery({ queryKey: ['datasets'], queryFn: listDatasets });
-  const { data: plansData } = useQuery({ queryKey: ['plans'], queryFn: () => listPlans(25) });
+  const { data: plansData } = useQuery({ queryKey: ['plans', 25], queryFn: () => listPlans(25) });
 
   const { data: dataset } = useQuery({
     queryKey: ['dataset', datasetId],

@@ -3,9 +3,7 @@ import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from './button';
-
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+import { useModalBehavior } from './useModalBehavior';
 
 type DialogProps = {
   open: boolean;
@@ -22,57 +20,7 @@ export function Dialog({ open, title, description, children, onClose, footer, si
   const panelRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
   const descriptionId = React.useId();
-  // The handler identity changes on every parent render; keep it in a ref so a
-  // re-render (a mutation settling, a query refetch) never re-runs the setup and
-  // yanks focus back out of the dialog.
-  const closeRef = React.useRef(onClose);
-  closeRef.current = onClose;
-
-  React.useEffect(() => {
-    if (!open) return;
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
-    const initial =
-      panel?.querySelector<HTMLElement>('[data-autofocus]') ??
-      panel?.querySelector<HTMLElement>(FOCUSABLE) ??
-      panel;
-    initial?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeRef.current();
-        return;
-      }
-      if (event.key !== 'Tab' || !panel) return;
-      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-        (element) => element.offsetParent !== null,
-      );
-      if (!focusable.length) {
-        event.preventDefault();
-        panel.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previouslyFocused?.focus?.();
-    };
-  }, [open]);
+  useModalBehavior(open, onClose, panelRef);
 
   if (!open) return null;
 

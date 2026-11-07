@@ -177,6 +177,21 @@
   }
 }
 
+@keyframes drawer-in {
+  from {
+    opacity: 0.4;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-drawer-in {
+  animation: drawer-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 .animate-dialog-in {
   animation: dialog-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -273,6 +288,7 @@
   .animate-bar-grow,
   .animate-dialog-in,
   .animate-toast-in,
+  .animate-drawer-in,
   .pulse-ring {
     animation: none !important;
     opacity: 1 !important;
