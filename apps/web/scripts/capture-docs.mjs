@@ -69,6 +69,10 @@ await page.getByText('Recovery actions').waitFor();
 await settle();
 await shot('recovery.png');
 
+// The rail itself: counters, active context and the next-step action.
+await page.locator('aside').screenshot({ path: resolve(OUT, 'console-menu.png') });
+console.log('captured console-menu.png');
+
 await page.getByLabel('Scenario', { exact: true }).click();
 await page.getByLabel('Search scenarios').fill('RT-03');
 await shot('scenario-picker.png');
@@ -112,6 +116,13 @@ await phone.getByRole('dialog', { name: 'Rename dataset' }).waitFor();
 await phone.waitForTimeout(400);
 await phone.screenshot({ path: resolve(OUT, 'dataset-dialog-mobile.png') });
 console.log('captured dataset-dialog-mobile.png');
+
+await phone.keyboard.press('Escape');
+await phone.getByRole('button', { name: 'Open console menu' }).click();
+await phone.getByRole('dialog', { name: 'Pre-Mortem Dispatch' }).waitFor();
+await phone.waitForTimeout(400);
+await phone.screenshot({ path: resolve(OUT, 'menu-mobile.png') });
+console.log('captured menu-mobile.png');
 await mobile.close();
 
 await browser.close();

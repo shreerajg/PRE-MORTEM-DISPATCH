@@ -72,6 +72,13 @@ real computed figures. Every CTA routes into the console.
 
 The console is built for repeated use, not for one screenshot.
 
+- **A menu that reads the workspace.** The rail stays fixed while the page scrolls, and every
+  destination carries a live counter plus a context line — the active dataset, the latest
+  baseline's fulfilment and solver, how many runs recovered, the most recent audit event. The
+  pipeline bar reports real completion (a stored dataset, a solved baseline, a recovered run),
+  not just the page you are on, and a next-step action follows the state of the work. On a phone
+  the same menu opens as a focus-trapped drawer from the pinned header, with the pipeline strip
+  still visible above the content.
 - **No native dialogs.** Renaming or deleting a dataset, plan or scenario opens an accessible
   modal — focus trapped, `Escape` or a backdrop click closes it, focus returns to the trigger.
   On a phone the same sheet docks to the bottom edge.
@@ -91,10 +98,12 @@ The console is built for repeated use, not for one screenshot.
 
 | | |
 |---|---|
-| ![Workspace datasets](docs/screenshots/datasets.png) | ![Rename dialog](docs/screenshots/dataset-dialog.png) |
-| **Datasets** — search, rename and delete in one list | **Modal rename** — focus trapped, `Escape` closes |
-| ![Scenario picker](docs/screenshots/scenario-picker.png) | ![Dialog on a phone](docs/screenshots/dataset-dialog-mobile.png) |
-| **Scenario picker** — searchable and keyboard-driven | **Mobile** — the same dialog docks to the bottom |
+| ![Console menu](docs/screenshots/console-menu.png) | ![Workspace datasets](docs/screenshots/datasets.png) |
+| **Fixed rail** — live counters, pipeline and the next step | **Datasets** — search, rename and delete in one list |
+| ![Rename dialog](docs/screenshots/dataset-dialog.png) | ![Scenario picker](docs/screenshots/scenario-picker.png) |
+| **Modal rename** — focus trapped, `Escape` closes | **Scenario picker** — searchable and keyboard-driven |
+| ![Dialog on a phone](docs/screenshots/dataset-dialog-mobile.png) | ![Menu on a phone](docs/screenshots/menu-mobile.png) |
+| **Mobile dialog** — docks to the bottom edge | **Mobile menu** — the same live rail, as a drawer |
 
 Beyond the six steps, the console manages the workspace: rename or delete datasets (a delete
 cascades through their plans and scenarios in one transaction), delete an unreferenced plan, and
@@ -165,7 +174,7 @@ python -m pytest apps/api/tests -q          # 95 passed
 cd apps/web && npm run build
 
 # Browser E2E — starts the API and Vite itself, on a separate e2e database
-cd apps/web && npx playwright test          # 15 passed
+cd apps/web && npx playwright test          # 17 passed
 ```
 
 `playwright.config.ts` auto-starts both processes and reuses already-running servers locally, so
@@ -199,6 +208,10 @@ The suite asserts invariants, not just "it returned 200":
 - plan deletion is refused while a scenario still references the plan
 - rename and delete run through the in-app dialogs, and dataset search narrows the workspace list
 - the first tab stop is the skip link, and `Escape` dismisses a destructive dialog
+- the rail reflects stored state (active dataset, baseline fulfilment, recovered runs), its
+  next-step link follows the workspace, and it stays put when the document scrolls
+- the phone menu opens as a drawer, returns focus on `Escape`, navigates and closes, and the
+  pinned header survives scrolling without horizontal overflow
 - the activity trail records mutations newest-first with structured detail
 - insights aggregate stored KPIs into a chronological trend, disruption mix and recovery economics
 - a severity sweep is monotonic for shortages, preserves volume for delays, and persists nothing
