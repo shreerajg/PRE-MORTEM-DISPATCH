@@ -322,6 +322,15 @@ def test_validation_flags_broken_references(client):
     assert len(report["issues"]) > 0
     assert any("DST-99" in i["message"] or "destination" in i["message"].lower() for i in report["issues"])
 
+    # Invalid imports remain inspectable, but must never produce an operational
+    # plan that could be mistaken for a valid manufacturer/consumer commitment.
+    rejected_plan = client.post(
+        "/api/v1/plans", json={"dataset_id": res.json()["dataset_id"]}
+    )
+    assert rejected_plan.status_code == 422
+    assert rejected_plan.json()["code"] == "validation_error"
+    assert "failed validation" in rejected_plan.json()["detail"].lower()
+
 
 def test_lists_expose_recent_plans_and_scenarios(client, baseline):
     plans = client.get("/api/v1/plans/").json()

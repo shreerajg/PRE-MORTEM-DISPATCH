@@ -43,6 +43,18 @@ def create_plan(body: PlanCreateRequest):
     ds = db.get_dataset(body.dataset_id)
     if not ds:
         raise HTTPException(status_code=404, detail=f"Dataset {body.dataset_id} not found")
+
+    validation_report = (ds.get("meta") or {}).get("validation_report") or {}
+    if isinstance(validation_report, dict) and validation_report.get("valid") is False:
+        summary = validation_report.get("summary") or {}
+        errors = summary.get("errors", "the dataset contains errors")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Dataset {body.dataset_id} failed validation ({errors} error(s)); "
+                "correct its CSV data before generating a plan."
+            ),
+        )
     if body.solver is not None and body.solver not in _SOLVERS:
         raise HTTPException(status_code=400, detail=f"Invalid solver '{body.solver}'; allowed {', '.join(_SOLVERS)}")
     meta = ds.get("meta", {})
