@@ -85,6 +85,21 @@ def test_delete_scenario_removes_owned_plans_but_keeps_baseline(client, baseline
     assert scenario_id not in {s["id"] for s in listed}
 
 
+def test_plan_deletion_checks_references_atomically(client, baseline):
+    from app.repo import database as db
+
+    _create(client, baseline)
+    deleted, referenced = db.delete_plan_if_unreferenced(baseline["id"])
+    assert (deleted, referenced) == (False, True)
+
+    standalone = client.post(
+        "/api/v1/plans", json={"dataset_id": baseline["dataset_id"]}
+    ).json()
+    deleted, referenced = db.delete_plan_if_unreferenced(standalone["id"])
+    assert (deleted, referenced) == (True, False)
+    assert db.get_plan(standalone["id"]) is None
+
+
 def test_deleting_one_scenario_leaves_the_others_intact(client, baseline):
     keep = _create(client, baseline, name="Keep me")
     drop = _create(client, baseline, name="Drop me")

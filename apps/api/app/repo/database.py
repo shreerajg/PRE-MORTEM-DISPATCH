@@ -599,12 +599,34 @@ def plan_reference_count(plan_id: str) -> int:
         conn.close()
 
 
-def delete_plan(plan_id: str) -> bool:
+def delete_plan_if_unreferenced(plan_id: str) -> tuple[bool, bool]:
+    """Atomically delete a plan only if it exists and no scenario references it.
+
+    Check and delete share one write transaction: a separate read followed by a
+    delete would let a concurrent scenario creation slip between the checks.
+    Returns ``(deleted, referenced)``.
+    """
     conn = _connect()
     try:
-        cur = conn.execute("DELETE FROM plans WHERE id = ?", (plan_id,))
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("SELECT 1 FROM plans WHERE id = ?", (plan_id,)).fetchone() is None:
+            conn.rollback()
+            return False, False
+        references = conn.execute(
+            """SELECT 1 FROM scenarios
+               WHERE baseline_plan_id = ? OR disrupted_plan_id = ? OR recovered_plan_id = ?
+               LIMIT 1""",
+            (plan_id, plan_id, plan_id),
+        ).fetchone()
+        if references is not None:
+            conn.rollback()
+            return False, True
+        deleted = conn.execute("DELETE FROM plans WHERE id = ?", (plan_id,)).rowcount > 0
         conn.commit()
-        return cur.rowcount > 0
+        return deleted, False
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

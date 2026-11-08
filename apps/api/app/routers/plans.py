@@ -160,17 +160,13 @@ def delete_plan(plan_id: str):
     if not plan:
         raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
 
-    references = db.plan_reference_count(plan_id)
-    if references:
+    deleted, referenced = db.delete_plan_if_unreferenced(plan_id)
+    if referenced:
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"Plan {plan_id} is referenced by {references} scenario(s); "
-                "delete those scenarios first."
-            ),
+            detail=f"Plan {plan_id} is referenced by a scenario; delete that scenario first.",
         )
-
-    if not db.delete_plan(plan_id):
+    if not deleted:
         raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
 
     record_activity(
