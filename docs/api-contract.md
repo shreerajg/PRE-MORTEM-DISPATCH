@@ -76,7 +76,9 @@ No body. Idempotent per call (each call creates a new dataset id).
 ### `POST /datasets/import`
 `multipart/form-data` with exactly six files: `warehouses`, `destinations`, `products`,
 `routes`, `inventory`, `demand`. Each must end in `.csv` and be under the configured limit
-(default 5 MB). Returns the same shape as `/datasets/sample`.
+(default 5 MB). Returns the same shape as `/datasets/sample`. Invalid imports are still retained for
+inspection and correction, but `POST /plans` rejects a dataset whose stored validation
+report contains errors with `422`; invalid input cannot become an operational plan.
 
 ### `GET /datasets/`
 List rows are deliberately summaries: a workspace can hold many datasets, so the
@@ -194,8 +196,9 @@ Same shape as the create response, including `solver_status`, `constraints` and
 
 ### `DELETE /plans/{id}`
 Deletes an unreferenced plan. If a scenario still points at it as baseline, disrupted or
-recovered plan, the API returns `409` with `code: "conflict"` and names the scenario
-count; delete those scenarios first.
+recovered plan, the API returns `409` with `code: "conflict"` when any scenario references the plan; delete the
+referencing scenario first. The reference check and deletion run atomically to prevent
+a concurrent scenario from losing its plan.
 ```json
 { "deleted": true, "plan_id": "...", "type": "baseline" }
 ```
@@ -366,7 +369,10 @@ remaining gap after recovery (for example `contingency_only` or `deadline_blocke
 
 Structure: `Scenario: <name> (<id>)` (or `Scenario: <id>` when unnamed), then one block per
 plan (`Plan: <id> (<type>)`) containing `Allocations`, `Unmet`, and `KPIs` sections.
-Values are the stored computed plan — nothing is recomputed at export time.
+Values are the stored computed plan — nothing is recomputed at export time. Text fields
+from imported data or scenario names that begin (after whitespace) with `=`, `+`, `-` or
+`@` are prefixed with an apostrophe to prevent spreadsheet formula execution when opening
+the export; numeric values remain numeric.
 
 ---
 
