@@ -113,6 +113,39 @@ def test_empty_and_oversized_uploads_are_rejected(client):
     assert oversized.json()["code"] == "payload_too_large"
 
 
+def test_scenario_csv_escapes_spreadsheet_formulas_without_changing_numbers():
+    import csv
+    import io
+
+    from app.services.reporting import export_scenario_csv
+
+    payload = export_scenario_csv(
+        {"id": "scenario-1", "name": '=HYPERLINK("https://example.com")'},
+        [
+            {
+                "id": "plan-1",
+                "type": "baseline",
+                "allocations": [
+                    {
+                        "warehouse_id": "+WH-1",
+                        "destination_id": " \t@SUM(1,1)",
+                        "product_id": "-PRODUCT",
+                        "route_id": "=CMD()",
+                        "quantity": 3,
+                    }
+                ],
+                "unmet": [],
+                "kpis": {"cost_delta": -12.5},
+            }
+        ],
+    )
+    rows = list(csv.reader(io.StringIO(payload.decode("utf-8"))))
+    assert rows[0][0] == "Scenario: '=HYPERLINK(\"https://example.com\") (scenario-1)"
+    allocation = rows[rows.index(["warehouse_id", "destination_id", "product_id", "route_id", "quantity"]) + 1]
+    assert allocation[:4] == ["'+WH-1", "' \t@SUM(1,1)", "'-PRODUCT", "'=CMD()"]
+    assert ["cost_delta", "-12.5"] in rows
+
+
 def test_non_finite_numbers_are_rejected_not_propagated():
     assert as_float("nan") == 0.0
     assert as_float("inf") == 0.0
