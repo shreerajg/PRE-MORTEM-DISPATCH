@@ -14,6 +14,7 @@ from app.services.audit import record as record_activity
 from app.services.diagnosis import diagnose_unmet
 from app.services.kpi import compute_delivery_risk, compute_kpis
 from app.services.normalize import build_network, load_deadlines, load_destinations
+from app.services.resilience import assess_plan_resilience
 
 router = APIRouter(prefix="/api/v1/plans", tags=["plans"])
 
@@ -163,6 +164,32 @@ def get_plan(plan_id: str):
         "constraints": data.get("constraints", {}),
         "unmet_diagnosis": data.get("unmet_diagnosis", []),
     }
+
+
+@router.get("/{plan_id}/resilience")
+def get_plan_resilience(plan_id: str):
+    """Assess how much redundancy and headroom a completed baseline has before it breaks."""
+    plan = db.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+    if plan.get("type") != "baseline":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan {plan_id} is a '{plan.get('type')}' plan; resilience requires a baseline plan",
+        )
+    if plan.get("status") != "completed":
+        raise HTTPException(status_code=409, detail=f"Plan {plan_id} is not completed")
+
+    ds = db.get_dataset(plan["dataset_id"])
+    if not ds:
+        raise HTTPException(status_code=404, detail=f"Dataset {plan['dataset_id']} not found")
+
+    try:
+        return assess_plan_resilience(ds.get("meta", {}), plan)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Resilience assessment failed: {e}")
 
 
 @router.delete("/{plan_id}")

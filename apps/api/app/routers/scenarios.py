@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.domain.schemas import AllocationInput, Demand, DisruptionRequest, Inventory, Route, ScenarioCreate, ScenarioRename
 from app.repo import database as db
+from app.services.advisory import scenario_brief
 from app.services.allocation import solve_allocation
 from app.services.audit import record as record_activity
 from app.services.diagnosis import diagnose_unmet
@@ -513,6 +514,36 @@ def recover_scenario(scenario_id: str):
     )
 
     return {"recovered_plan": {"id": recovered_plan_id, "dataset_id": dataset_id, "type": "recovered", "status": "completed", "solver": recovered_result.solver, "solver_status": recovered_result.status, "created_at": created_at, "allocations": recovered_data["allocations"], "unmet": recovered_data["unmet"], "kpis": recovered_data["kpis"], "unmet_diagnosis": recovered_diagnosis}, "recovery_actions": recovery_actions, "residual_unmet": residual_unmet, "residual_diagnosis": recovered_diagnosis}
+
+
+@router.get("/{scenario_id}/brief")
+def get_scenario_brief(scenario_id: str):
+    """Project consumer service exposure and evaluate one-lever manufacturer mitigations."""
+    scen = db.get_scenario(scenario_id)
+    if not scen:
+        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
+    if not scen.get("disrupted_plan_id"):
+        raise HTTPException(status_code=409, detail="Disrupt a baseline before requesting a service brief")
+
+    baseline_plan = db.get_plan(scen["baseline_plan_id"]) if scen.get("baseline_plan_id") else None
+    if not baseline_plan:
+        raise HTTPException(status_code=404, detail=f"Baseline plan {scen.get('baseline_plan_id')} not found")
+
+    ds = db.get_dataset(baseline_plan["dataset_id"])
+    if not ds:
+        raise HTTPException(status_code=404, detail=f"Dataset {baseline_plan['dataset_id']} not found")
+
+    try:
+        disruptions = _stored_disruptions(scen.get("disruption", {}))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid disruption in scenario: {e}")
+
+    try:
+        return scenario_brief(ds.get("meta", {}), baseline_plan, disruptions, scen)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Scenario brief failed: {e}")
 
 
 @router.get("/{scenario_id}/compare")
