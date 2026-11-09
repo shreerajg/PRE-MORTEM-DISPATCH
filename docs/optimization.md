@@ -118,6 +118,50 @@ independent solve — the curve is not interpolated, and no scenario is stored.
 - Each point also aggregates the unmet causes, so the dominant binding constraint
   at that severity is visible next to the number.
 
+## Resilience score
+
+```
+resilience_score = 30×lane_redundancy
+                 + 20×contingency_coverage
+                 + 20×capacity_headroom
+                 + 15×inventory_diversification
+                 + 15×delivery_margin
+```
+
+- `lane_redundancy` — demand units that have at least two eligible ordinary lanes.
+- `contingency_coverage` — demand units reachable by at least one eligible backup lane.
+- `capacity_headroom` — unused capacity across all eligible ordinary routes.
+- `inventory_diversification` — demand-weighted share of product stock held away from its
+  largest warehouse.
+- `delivery_margin` — units allocated by the plan whose lane meets the destination deadline.
+
+The result is a pre-mortem structural score, not a disruption outcome. It deliberately does
+not reuse the plan's `risk_score`: risk measures how much is already failing, while
+resilience measures how much redundancy remains before failure begins.
+
+## Tested mitigation options
+
+`GET /scenarios/{id}/brief` re-solves the disrupted network, then creates up to six isolated
+candidate inputs from the evidence behind unmet and late rows:
+
+- activate one contingency lane;
+- increase one eligible lane's capacity;
+- add a product buffer at one reachable warehouse;
+- expedite one delayed or deadline-blocked lane.
+
+Each candidate is applied to a deep copy and solved under the baseline's policy and solver.
+The reported effect is exactly:
+
+```
+restored_units      = candidate fulfilled units − disrupted fulfilled units
+on_time_restored    = candidate on-time units − disrupted on-time units
+cost_delta          = candidate transport cost − disrupted transport cost
+```
+
+The service projection treats a destination×product promise as complete only when its units
+are allocated and `route.time_days <= destination.deadline_days`. These are modelled demand
+units, not an invented number of individual consumers. The advisory writes nothing.
+
 ## Documented assumptions
 
 1. **Route delay does not change capacity.** It raises `time_days`, which feeds the delivery-risk

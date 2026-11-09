@@ -11,7 +11,7 @@ tested and replaced independently — not to distribute the deployment.
 ```mermaid
 flowchart TB
   subgraph FE["apps/web — React + TS + Vite"]
-    Pages["Pages: Dashboard · Datasets · Planner · Disruption · Recovery · Compare · Exports"]
+    Pages["Pages: Dashboard · Datasets · Planner · Resilience · Disruption · Recovery · Compare · Insights · Exports"]
     Client["lib/api.ts — typed fetch client"]
     Pages --> Client
   end
@@ -50,6 +50,8 @@ the whole history.
 | `services/disruption.py` | Mutating planning inputs on copies | Mutate the caller's objects |
 | `services/diagnosis.py` | Explain every unmet row from the inputs + result | Change feasibility or invent causes |
 | `services/recovery.py` | Recovery re-plan and allocation diff | Claim success when infeasible |
+| `services/resilience.py` | Baseline redundancy, headroom and deadline-margin assessment | Persist or mutate planning state |
+| `services/advisory.py` | Consumer service projection and isolated solver-tested mitigations | Recommend an effect the re-solve did not achieve |
 | `services/sensitivity.py` | Severity sweeps over one disruption | Persist results or change policy |
 | `services/kpi.py` | KPI + delivery-risk + risk score | Depend on persistence |
 | `services/normalize.py` | CSV row → typed domain object | Silently drop rows |
@@ -86,6 +88,11 @@ sequenceDiagram
   API->>DB: store plan + constraints
   API-->>FE: plan + KPIs
 
+  U->>FE: Assess baseline resilience
+  FE->>API: GET /plans/{id}/resilience
+  API->>DB: read baseline plan + unchanged dataset
+  API-->>FE: ephemeral readiness score and vulnerabilities
+
   U->>FE: Configure disruption
   FE->>API: POST /scenarios {baseline_plan_id, disruption}
   API->>DB: load baseline dataset (unchanged)
@@ -100,6 +107,13 @@ sequenceDiagram
   API->>KPI: recovered KPIs + residual
   API->>DB: store recovered plan
   API-->>FE: recovered plan + actions + residual
+
+  U->>FE: Analyze consumer exposure and mitigation moves
+  FE->>API: GET /scenarios/{id}/brief
+  API->>DB: replay stored scenario against the unchanged dataset
+  API->>ALLOC: one disrupted solve plus up to six one-lever solves
+  API->>KPI: service coverage, on-time units and tested effects
+  API-->>FE: service projection + ranked mitigations (writes nothing)
 
   U->>FE: Compare / export
   FE->>API: GET /scenarios/{id}/compare | /export
@@ -136,6 +150,9 @@ sequenceDiagram
 11. **Ephemeral sweeps.** A sensitivity sweep re-solves the same network at each severity with
     the baseline's solver and deadline policy, and writes nothing to the database. Verified by
     `test_shortage_sweep_degrades_fulfillment_and_stores_nothing`.
+12. **Ephemeral intelligence.** Resilience and scenario briefs recompute from stored inputs,
+    write no plan, scenario or activity record, and report a mitigation only when the re-solve
+    actually improves its projected effect. Verified by `test_resilience.py`.
 
 ## 5. Recovery model
 

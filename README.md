@@ -17,6 +17,7 @@ number computed, not narrated.
 |---|---|---|
 | 1 | **Datasets** | Load a bundled 4-warehouse / 8-destination network, or upload six CSVs. Schema, type, duplicate and referential checks run before anything is planned. |
 | 2 | **Planner** | Solves a constrained allocation: inventory, lane capacity, lane availability, product eligibility, destination priority — and, optionally, destination deadlines as a hard constraint. Shows every shipment, every gap, and the risk-score breakdown. |
+| ★ | **Resilience** | Scores ordinary-lane redundancy, contingency coverage, capacity headroom, inventory concentration and deadline margin before a failure is simulated. Vulnerabilities are ranked by affected units × destination priority. |
 | 3 | **Disruption Lab** | Mutates *real planning inputs* — reduced stock, zeroed supply, a closed lane, or added transit days — alone or up to five at once, applied in order. Impact is the difference between two computed plans. |
 | 4 | **Recovery** | Re-plans using contingency lanes and priority ordering, lists each concrete allocation change with its unit cost, and names the constraint behind every residual gap. |
 | 5 | **Compare** | Baseline / disrupted / recovered side by side, with server-computed deltas and a written trade-off. |
@@ -32,6 +33,11 @@ number computed, not narrated.
 
 That is the whole product in one line: *closing a lane costs 500 units of demand; buying it back
 through contingency capacity costs $3,410.*
+
+The tested mitigation view sharpens that answer further: activating `RT-13` alone restores 250
+of the 500 missing units for $1,905, while a 200-unit buffer at `WH-01` restores the largest
+remaining gap for $1,000. Every number is a fresh solver run, so the app can show which single
+manufacturer action is effective rather than merely recommending recovery.
 
 If recovery genuinely cannot cover demand, the app returns the residual gaps and names the
 limiting destination×product rows. It never reports a success it cannot compute.
@@ -50,6 +56,19 @@ limiting destination×product rows. It never reports a success it cannot compute
   against the same baseline. Shortage curves chart fulfilment and unmet units; delay curves
   chart deadline exposure, because volume stays at 100%. Each point names its dominant cause,
   and no scenario or plan is stored.
+- **Consumer service brief** — converts the disrupted plan into coverage and complete/on-time
+  service rates, highlights priority 1–2 unmet units, and ranks affected destination×product
+  promises without pretending to know individual customer counts.
+- **Solver-tested mitigations** — up to six isolated actions (activate a backup lane, add lane
+  capacity, create an inventory buffer, or expedite a route) are re-solved individually. The UI
+  shows the units actually restored, deadline units protected, marginal cost and residual gap.
+
+### How it serves both sides of the supply chain
+
+Manufacturers get an evidence-based answer to *"which dependency should we remove first, and what
+will the mitigation actually restore?"* Consumers are represented through the destinations they
+depend on: hospitals, clinics and fulfillment points receive a service-level view of how much
+demand is complete, late or unserved — never a marketing claim that a gap was solved.
 
 ### Screens
 
@@ -67,6 +86,8 @@ real computed figures. Every CTA routes into the console.
 | **Planner** — allocations, gaps, risk breakdown | **Compare** — absolute values, deltas, deadline exposure |
 | ![Workspace insights](docs/screenshots/insights.png) | ![Recovery center](docs/screenshots/recovery.png) |
 | **Insights** — server-aggregated trends, mix, recovery economics | **Recovery** — contingency actions, residual gaps, trade-off |
+| ![Network resilience](docs/screenshots/resilience.png) | ![Tested mitigations](docs/screenshots/mitigation-brief.png) |
+| **Resilience** — readiness score, bottlenecks and dependencies | **Service brief** — consumer exposure and ranked mitigation effects |
 
 ### Usability that survives a real workspace
 
@@ -116,7 +137,7 @@ drifting aurora gradients, a marquee of modelled constraints, and cursor spotlig
 it respects `prefers-reduced-motion`.
 
 **Routes:** `/` landing · `/login` (auth/token entry) · `/dashboard` · `/datasets` · `/planner` ·
-`/disruption` · `/recovery` · `/compare` · `/insights` · `/exports`
+`/resilience` · `/disruption` · `/recovery` · `/compare` · `/insights` · `/exports`
 
 ---
 
@@ -167,14 +188,14 @@ OR-Tools ran.
 ## Tests
 
 ```bash
-# Backend: allocation invariants + full API workflow
-python -m pytest apps/api/tests -q          # 95 passed
+# Backend: allocation, lifecycle, resilience and full API workflow
+python -m pytest apps/api/tests -q          # 101 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
 # Browser E2E — starts the API and Vite itself, on a separate e2e database
-cd apps/web && npx playwright test          # 17 passed
+cd apps/web && npx playwright test          # 18 passed
 ```
 
 `playwright.config.ts` auto-starts both processes and reuses already-running servers locally, so
@@ -241,8 +262,8 @@ apps/
       domain/      schemas.py — single source of truth (Pydantic)
       routers/     health, auth, activity, analytics, datasets, plans,
                    scenarios, forecast
-      services/    allocation, disruption, recovery, kpi, normalize,
-                   validation, reporting, audit, ml/{interface,baseline}
+      services/    allocation, disruption, recovery, resilience, advisory, kpi,
+                   normalize, validation, reporting, audit, ml/{interface,baseline}
       repo/        SQLite repository
     tests/
   web/
@@ -274,6 +295,12 @@ Full detail — data flow, invariants, objective function, risk formula — in
   replan.
 - **Feasibility ≠ optimality** — the greedy engine is feasible and priority-respecting, not
   proven optimal. Every plan displays its solver and status.
+- **Readiness ≠ disruption impact** — the resilience score measures structural redundancy and
+  headroom before failure; the existing risk score measures what the current plan actually fails
+  to serve. They are deliberately separate.
+- **Advice must earn its numbers** — a mitigation recommendation is one candidate mutation plus
+  a re-solve. The displayed restored units, deadline effect and cost come from that result; an
+  option that fails is labelled `no_effect` instead of being hidden or described as a win.
 
 ---
 

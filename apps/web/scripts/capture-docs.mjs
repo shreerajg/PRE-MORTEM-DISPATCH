@@ -52,7 +52,12 @@ await page.getByRole('button', { name: /generate baseline/i }).click();
 await page.getByText(/Baseline plan created/i).waitFor();
 await shot('planner.png');
 
-// 3 — disruption
+// 3 — pre-mortem readiness
+await page.goto(`${BASE}/resilience`);
+await page.getByText('Readiness score').waitFor();
+await shot('resilience.png');
+
+// 4 — disruption
 await page.goto(`${BASE}/disruption`);
 await page.getByLabel('Scenario name (optional)').fill(SCENARIO_NAME);
 await page.getByLabel('Disruption type').selectOption('route_closure');
@@ -62,12 +67,19 @@ await page.getByText(/Route closure: set route RT-03 available=False/).waitFor()
 await settle();
 await shot('disruption-lab.png');
 
-// 4 — recovery, then the searchable scenario picker
+// 5 — recovery, then the consumer/mitigation brief
 await page.goto(`${BASE}/recovery`);
 await page.getByRole('button', { name: /run recovery/i }).click();
 await page.getByText('Recovery actions').waitFor();
 await settle();
 await shot('recovery.png');
+
+await page.getByRole('button', { name: /analyze impact and options/i }).click();
+await page.getByText('Service projection').waitFor();
+await page.getByText('Solver-tested manufacturer moves').waitFor();
+await page.getByText('Solver-tested manufacturer moves').scrollIntoViewIfNeeded();
+await settle();
+await shot('mitigation-brief.png');
 
 // The rail itself: counters, active context and the next-step action.
 await page.locator('aside').screenshot({ path: resolve(OUT, 'console-menu.png') });
@@ -78,7 +90,7 @@ await page.getByLabel('Search scenarios').fill('RT-03');
 await shot('scenario-picker.png');
 await page.keyboard.press('Escape');
 
-// 5 — comparison, dashboard, insights
+// 6 — comparison, dashboard, insights
 await page.goto(`${BASE}/compare`);
 await page.getByText('KPI comparison').waitFor();
 await shot('compare.png');
@@ -90,7 +102,7 @@ await page.goto(`${BASE}/insights`);
 await page.getByText(/Disruption mix/i).first().waitFor();
 await shot('insights.png');
 
-// 6 — the rename dialog and the toast it produces
+// 7 — the rename dialog and the toast it produces
 await page.goto(`${BASE}/datasets`);
 const row = page.getByRole('row', { name: /Sample Network/ }).first();
 await row.getByRole('button', { name: /^Rename / }).click();
@@ -103,7 +115,7 @@ await shot('toast.png');
 
 await context.close();
 
-// 7 — the same dialog on a phone, where it docks to the bottom edge
+// 8 — the same dialog and live menu on a phone
 const mobile = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const phone = await mobile.newPage();
 await phone.goto(`${BASE}/datasets`);

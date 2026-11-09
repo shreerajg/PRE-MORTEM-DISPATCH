@@ -194,6 +194,38 @@ emptied by newer plans of another type. `constraints` reports the planning polic
 Same shape as the create response, including `solver_status`, `constraints` and
 `unmet_diagnosis`.
 
+### `GET /plans/{id}/resilience`
+Pre-mortem readiness of a completed baseline. The endpoint reads the stored plan and its
+dataset, writes no plan/scenario/activity row, and returns an ephemeral score.
+
+```json
+{
+  "plan_id": "uuid",
+  "dataset_id": "uuid",
+  "score": 63.15,
+  "grade": "fragile",
+  "definition": "resilience_score = 30×lane redundancy + 20×contingency coverage + 20×capacity headroom + 15×inventory diversification + 15×delivery margin",
+  "score_components": [{ "key": "lane_redundancy", "weight": 30, "rate": 0.4688, "points": 14.06, "evidence": { "redundant_units": 2330 } }],
+  "metrics": { "total_demand": 4970, "redundant_lane_units": 2330, "contingency_covered_units": 4970, "capacity_headroom_rate": 0.2048 },
+  "vulnerabilities": [{
+    "kind": "lane_bottleneck",
+    "severity": "high",
+    "title": "WH-02 → DST-01 is 92.9% allocated",
+    "affected_units": 650,
+    "priority": 1,
+    "route_ids": ["RT-03"],
+    "evidence": { "shipped": 650, "capacity": 700, "utilization": 0.9286 }
+  }],
+  "recommendations": [{ "kind": "capacity_uplift", "title": "Increase spare lane capacity before the next planning cycle", "detail": "..." }],
+  "note": "Ephemeral readiness assessment: it does not store a plan, scenario, or activity record."
+}
+```
+
+`grade` is `resilient` at ≥80, `prepared` at ≥65, `fragile` at ≥45 and `critical`
+below that. Vulnerabilities are ranked by affected units multiplied by destination
+priority weight. Non-baseline or incomplete plans return `400` or `409`; missing
+plans/datasets return `404`.
+
 ### `DELETE /plans/{id}`
 Deletes an unreferenced plan. If a scenario still points at it as baseline, disrupted or
 recovered plan, the API returns `409` with `code: "conflict"` when any scenario references the plan; delete the
@@ -347,6 +379,48 @@ No body. Re-plans with contingency lanes enabled.
 
 `residual_diagnosis` uses the same shape as `unmet_diagnosis` and explains every
 remaining gap after recovery (for example `contingency_only` or `deadline_blocked`).
+
+### `GET /scenarios/{id}/brief`
+Read-only advisory built from the scenario's stored baseline policy and disruption
+events. It first re-solves the disrupted network, then evaluates up to six isolated
+manufacturer actions against that result. It does not create a scenario, plan or
+activity record.
+
+```json
+{
+  "scenario_id": "uuid",
+  "solver": "greedy",
+  "service": {
+    "total_demand": 4970,
+    "coverage_rate": 0.8994,
+    "on_time_rate": 0.8994,
+    "unmet": 500,
+    "critical_unmet_units": 500,
+    "statement": "4,470 of 4,970 units (89.9%) would be complete and on time...",
+    "impacted_destinations": [{ "destination_id": "DST-01", "name": "Metro General Hospital", "priority": 1, "unmet": 400, "late": 0, "on_time_rate": 0.3846 }],
+    "largest_gaps": [{ "destination_name": "Metro General Hospital", "product_name": "Emergency Kit", "quantity": 400, "cause": "capacity_shared", "summary": "..." }],
+    "model": { "consumer_scope": "modelled destination demand, not named individual consumers" }
+  },
+  "recommendations": [{
+    "kind": "activate_contingency_lane",
+    "title": "Activate contingency lane RT-13",
+    "tested": true,
+    "status": "validated",
+    "solver": "greedy",
+    "action": { "route_id": "RT-13" },
+    "projected": { "coverage_rate": 0.9497, "on_time_rate": 0.9497, "total_cost": 23235 },
+    "effect": { "restored_units": 250, "on_time_restored_units": 250, "cost_delta": 1905, "cost_per_restored_unit": 7.62 }
+  }],
+  "strategic_actions": [],
+  "mitigation_summary": { "options_tested": 4, "validated_options": 4, "best_restored_units": 250 },
+  "note": "Ephemeral advisory: each option re-solves one isolated network change and no scenario, plan, or activity row is stored."
+}
+```
+
+Recommendation kinds are `activate_contingency_lane`, `increase_route_capacity`,
+`add_inventory_buffer` and `expedite_lane`. Every projected value comes from a new
+solver run; an option with no solver effect is reported as `no_effect` rather than
+removed. A scenario without a disrupted plan returns `409`.
 
 ### `GET /scenarios/{id}/compare`
 ```json

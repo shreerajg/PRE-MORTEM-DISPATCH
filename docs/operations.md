@@ -102,6 +102,9 @@ docker compose start api
   handling deliberately.
 - **Solver time.** `/plans` and scenario re-solves are synchronous. nginx allows 120 s, but a very
   large network should move solving to a job queue rather than raising that timeout.
+- **Advisory cost.** Baseline resilience reads one stored plan and its dataset. A scenario brief
+  performs one disrupted solve plus up to six isolated mitigation solves on demand. It stores no
+  results; the console makes the advisory opt-in so listing scenarios remains cheap.
 - **Docs exposure.** Leave `DOCS_ENABLED=false` in public deployments unless you intend to publish
   the OpenAPI schema.
 
