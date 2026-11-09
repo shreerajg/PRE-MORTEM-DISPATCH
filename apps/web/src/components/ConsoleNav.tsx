@@ -8,6 +8,7 @@ import {
   GitCompare,
   HeartPulse,
   LayoutDashboard,
+  ShieldCheck,
   TrendingUp,
   Zap,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ export const CONSOLE_NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, step: null },
   { to: '/datasets', label: 'Datasets', icon: Database, step: 0 },
   { to: '/planner', label: 'Planner', icon: Calculator, step: 1 },
+  { to: '/resilience', label: 'Resilience', icon: ShieldCheck, step: null },
   { to: '/disruption', label: 'Disruption Lab', icon: Zap, step: 2 },
   { to: '/recovery', label: 'Recovery', icon: HeartPulse, step: 3 },
   { to: '/compare', label: 'Compare', icon: GitCompare, step: 4 },
@@ -65,6 +67,10 @@ function itemMeta(to: string, pulse: WorkspacePulse): string {
       return latestBaseline
         ? `${(latestBaseline.kpis.fulfillment_rate * 100).toFixed(1)}% fulfilled · ${latestBaseline.solver}`
         : 'No baseline solved yet';
+    case '/resilience':
+      return latestBaseline
+        ? 'Check single-source and headroom risks'
+        : 'Solve a baseline first';
     case '/disruption':
       return pulse.activeScenario ? `Latest · ${scenarioTitle(pulse.activeScenario)}` : 'Nothing broken yet';
     case '/recovery':

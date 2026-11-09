@@ -382,11 +382,196 @@ export type ForecastResponse = {
   reason?: string | null;
 };
 
+export type ResilienceComponent = {
+  key: string;
+  label: string;
+  weight: number;
+  rate: number;
+  points: number;
+  evidence: Record<string, unknown>;
+};
+
+export type ResilienceVulnerability = {
+  kind: string;
+  severity: 'low' | 'medium' | 'high' | 'critical' | string;
+  title: string;
+  detail: string;
+  affected_units: number;
+  priority: number;
+  rank_score: number;
+  route_ids: string[];
+  destination_ids: string[];
+  product_ids: string[];
+  warehouse_ids: string[];
+  evidence: Record<string, unknown>;
+};
+
+export type ResilienceRecommendation = {
+  kind: string;
+  title: string;
+  detail: string;
+  affected_units: number | null;
+  evidence: Record<string, unknown>;
+};
+
+export type PlanResilienceResponse = {
+  plan_id: string;
+  dataset_id: string;
+  solver: string;
+  solver_status?: string | null;
+  constraints: { respect_deadlines?: boolean };
+  score: number;
+  grade: string;
+  definition: string;
+  score_components: ResilienceComponent[];
+  metrics: {
+    total_demand: number;
+    redundant_lane_units: number;
+    contingency_covered_units: number;
+    capacity_headroom_rate: number;
+    eligible_primary_routes: number;
+    contingency_routes: number;
+    unmet_rows: number;
+    vulnerabilities: number;
+  };
+  vulnerabilities: ResilienceVulnerability[];
+  recommendations: ResilienceRecommendation[];
+  note: string;
+};
+
+export type ServiceDestinationImpact = {
+  destination_id: string;
+  name: string;
+  priority: number;
+  demand: number;
+  fulfilled: number;
+  unmet: number;
+  late: number;
+  coverage_rate: number;
+  on_time_rate: number;
+};
+
+export type ServiceProductImpact = {
+  product_id: string;
+  name: string;
+  demand: number;
+  fulfilled: number;
+  unmet: number;
+  coverage_rate: number;
+};
+
+export type ServiceGap = {
+  destination_id: string;
+  destination_name: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  priority: number;
+  demand: number;
+  cause: string;
+  summary: string;
+  explanation: string;
+};
+
+export type MitigationOption = {
+  id: string;
+  kind: string;
+  title: string;
+  description: string;
+  tested: boolean;
+  status: string;
+  solver: string;
+  solver_status: string;
+  action: Record<string, unknown>;
+  targeted_units: number;
+  rows: {
+    destination_id: string;
+    destination_name: string;
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    late_quantity: number;
+    priority: number;
+  }[];
+  evidence: Record<string, unknown>;
+  baseline_projection: {
+    coverage_rate: number;
+    on_time_rate: number;
+    unmet: number;
+    late_units: number;
+    total_cost: number;
+  };
+  projected: {
+    coverage_rate: number;
+    on_time_rate: number;
+    unmet: number;
+    late_units: number;
+    total_cost: number;
+    max_late_days: number;
+  };
+  effect: {
+    restored_units: number;
+    on_time_restored_units: number;
+    late_units_reduced: number;
+    cost_delta: number;
+    cost_per_restored_unit: number | null;
+  };
+  improvement_units: number;
+};
+
+export type StrategicAction = {
+  kind: string;
+  title: string;
+  detail: string;
+  affected_units?: number | null;
+  tested: false;
+};
+
+export type ScenarioBriefResponse = {
+  scenario_id: string;
+  baseline_plan_id: string;
+  disrupted_plan_id: string | null;
+  solver: string;
+  solver_status: string;
+  disruption_description: string;
+  respect_deadlines: boolean;
+  kpis: KPISnapshot;
+  delivery_risk: DeliveryRisk;
+  service: {
+    total_demand: number;
+    fulfilled: number;
+    unmet: number;
+    late_units: number;
+    on_time_units: number;
+    coverage_rate: number;
+    on_time_rate: number;
+    critical_unmet_units: number;
+    affected_destinations: number;
+    late_destinations: number;
+    affected_products: number;
+    impacted_destinations: ServiceDestinationImpact[];
+    impacted_products: ServiceProductImpact[];
+    largest_gaps: ServiceGap[];
+    statement: string;
+    model: { coverage: string; on_time: string; consumer_scope: string };
+  };
+  recommendations: MitigationOption[];
+  strategic_actions: StrategicAction[];
+  mitigation_summary: {
+    options_tested: number;
+    validated_options: number;
+    best_restored_units: number;
+    best_on_time_restored_units: number;
+  };
+  note: string;
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const REQUEST_TIMEOUT_MS = 20_000;
+const ADVISORY_TIMEOUT_MS = 60_000;
 
 /** API failures keep their status, machine code and server request id. */
 export class ApiError extends Error {
@@ -655,6 +840,14 @@ export async function exportScenario(id: string): Promise<Blob> {
   rows.push(['narrative', cmp.tradeoff_narrative]);
   const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
   return new Blob([csv], { type: 'text/csv' });
+}
+
+export async function getPlanResilience(planId: string): Promise<PlanResilienceResponse> {
+  return request<PlanResilienceResponse>(`/api/v1/plans/${planId}/resilience`);
+}
+
+export async function getScenarioBrief(scenarioId: string): Promise<ScenarioBriefResponse> {
+  return request<ScenarioBriefResponse>(`/api/v1/scenarios/${scenarioId}/brief`, {}, ADVISORY_TIMEOUT_MS);
 }
 
 export async function forecast(params: {

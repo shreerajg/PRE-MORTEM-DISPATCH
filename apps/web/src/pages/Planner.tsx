@@ -129,11 +129,18 @@ export default function Planner() {
         description="Solve a constrained allocation for the active dataset, then review every shipment and gap."
         actions={
           kpis ? (
-            <Button asChild variant="outline" size="sm">
-              <Link to="/disruption">
-                Simulate a disruption <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/resilience">
+                  Assess resilience <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/disruption">
+                  Simulate a disruption <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </>
           ) : null
         }
         meta={dataset ? <Badge variant="outline">{dataset.name}</Badge> : null}

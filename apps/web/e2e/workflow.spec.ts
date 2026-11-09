@@ -257,6 +257,36 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
   });
 });
 
+test.describe('Resilience intelligence', () => {
+  test('assesses readiness and ranks solver-tested recovery moves', async ({ page }) => {
+    await page.goto('/datasets');
+    await page.getByRole('button', { name: /load sample dataset/i }).click();
+    await expect(page.getByText(/Dataset imported/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/planner');
+    await page.getByRole('button', { name: /generate baseline/i }).click();
+    await expect(page.getByText(/Baseline plan created/i)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/resilience');
+    await expect(page.getByRole('heading', { name: 'Network Resilience' })).toBeVisible();
+    await expect(page.getByText('Readiness score')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('What is likely to break first')).toBeVisible();
+
+    await page.goto('/disruption');
+    await page.getByLabel('Disruption type').selectOption('route_closure');
+    await page.getByLabel('Route').selectOption('RT-03');
+    await page.getByRole('button', { name: /simulate disruption/i }).click();
+    await expect(page.getByText(/Route closure: set route RT-03 available=False/)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto('/recovery');
+    await page.getByRole('button', { name: /analyze impact and options/i }).click();
+    await expect(page.getByText('Service projection')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Complete and on time', { exact: true })).toBeVisible();
+    await expect(page.getByText('Solver-tested manufacturer moves')).toBeVisible();
+    await expect(page.getByText(/Activate contingency lane RT-13/)).toBeVisible();
+  });
+});
+
 test.describe('Insights', () => {
   test('aggregates scenario history and shows the activity trail', async ({ page }) => {
     await page.route('**/api/v1/analytics/overview*', (route) =>

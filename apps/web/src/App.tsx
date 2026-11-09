@@ -10,6 +10,7 @@ import LoginPlaceholder from './pages/LoginPlaceholder';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Datasets = lazy(() => import('./pages/Datasets'));
 const Planner = lazy(() => import('./pages/Planner'));
+const Resilience = lazy(() => import('./pages/Resilience'));
 const DisruptionLab = lazy(() => import('./pages/DisruptionLab'));
 const Recovery = lazy(() => import('./pages/Recovery'));
 const Compare = lazy(() => import('./pages/Compare'));
@@ -54,6 +55,7 @@ export default function App() {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/datasets" element={<Datasets />} />
                   <Route path="/planner" element={<Planner />} />
+                  <Route path="/resilience" element={<Resilience />} />
                   <Route path="/disruption" element={<DisruptionLab />} />
                   <Route path="/recovery" element={<Recovery />} />
                   <Route path="/compare" element={<Compare />} />

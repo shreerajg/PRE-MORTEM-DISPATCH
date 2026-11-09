@@ -9,6 +9,8 @@ import {
   Pencil,
   RefreshCw,
   Route,
+  ShieldCheck,
+  Sparkles,
   Trash2,
   Wrench,
   Zap,
@@ -23,11 +25,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { PageHeader } from '../components/PageHeader';
 import { PlanJourney } from '../components/PlanJourney';
 import { ScenarioPicker } from '../components/ScenarioPicker';
+import { Stat } from '../components/Stat';
 import { CauseBadge } from '../components/CauseBadge';
 import {
   compareScenario,
   deleteScenario,
   getScenario,
+  getScenarioBrief,
   listScenarios,
   recoverScenario,
   renameScenario,
@@ -63,11 +67,23 @@ const ACTION_META: Record<string, { icon: React.ElementType; chip: string; label
   },
 };
 
+const MITIGATION_META: Record<string, { icon: React.ElementType; label: string }> = {
+  activate_contingency_lane: { icon: Route, label: 'Contingency lane' },
+  increase_route_capacity: { icon: ArrowRight, label: 'Lane capacity' },
+  add_inventory_buffer: { icon: ShieldCheck, label: 'Inventory buffer' },
+  expedite_lane: { icon: Zap, label: 'Expedite transit' },
+};
+
+const advisoryPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
+const advisoryUnits = (value: number) => Math.round(value).toLocaleString();
+const advisoryCost = (value: number) => `${value >= 0 ? '+' : '−'}$${Math.abs(Math.round(value)).toLocaleString()}`;
+
 export default function Recovery() {
   const qc = useQueryClient();
   const { scenarioId, setScenarioId, setRecoveredPlan } = useAppStore();
   const [sid, setSid] = React.useState(scenarioId ?? '');
   const [dialog, setDialog] = React.useState<'rename' | 'delete' | null>(null);
+  const [briefRequested, setBriefRequested] = React.useState(false);
 
   const { data: scenarioList } = useQuery({ queryKey: ['scenarios', 50], queryFn: () => listScenarios(50) });
   const scenarios = scenarioList?.scenarios ?? [];
@@ -78,6 +94,10 @@ export default function Recovery() {
   React.useEffect(() => {
     if (!sid && scenarios.length) setSid(scenarios[0].id);
   }, [scenarios, sid]);
+
+  // Advisory re-solves are deliberately explicit; changing the run invalidates
+  // the old request state instead of leaving another scenario's advice visible.
+  React.useEffect(() => setBriefRequested(false), [sid]);
 
   const compareQuery = useQuery({
     queryKey: ['compare', sid],
@@ -90,6 +110,14 @@ export default function Recovery() {
     queryKey: ['scenario', sid],
     queryFn: () => getScenario(sid),
     enabled: !!sid,
+  });
+
+  const briefQuery = useQuery({
+    queryKey: ['scenario-brief', sid],
+    queryFn: () => getScenarioBrief(sid),
+    enabled: !!sid && briefRequested,
+    staleTime: 60_000,
+    retry: false,
   });
 
   const recoverMut = useMutation({
@@ -376,6 +404,202 @@ export default function Recovery() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {baselineK && disruptedK ? (
+        <Card className="overflow-hidden">
+          <div aria-hidden className="h-1 w-full bg-gradient-to-r from-teal-500 via-emerald-500 to-sky-500" />
+          <CardHeader className="flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-teal-600" /> Consumer exposure and tested mitigations
+              </CardTitle>
+              <CardDescription>
+                Translate the disruption into service exposure, then re-solve one manufacturer action at a time.
+              </CardDescription>
+            </div>
+            {briefRequested ? (
+              <Button size="sm" variant="outline" onClick={() => briefQuery.refetch()} disabled={briefQuery.isFetching}>
+                {briefQuery.isFetching ? 'Re-solving…' : 'Refresh analysis'}
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {!briefRequested ? (
+              <div className="grid gap-4 rounded-xl border border-slate-900/[0.07] bg-slate-50/60 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <p className="text-[12.5px] leading-relaxed text-slate-600">
+                  Analysis re-solves the disrupted network for the service projection, then tests up to six isolated
+                  contingency, capacity, inventory and transit-time moves. Nothing is written to the workspace.
+                </p>
+                <Button onClick={() => setBriefRequested(true)}>
+                  <Sparkles className="h-4 w-4" /> Analyze impact and options
+                </Button>
+              </div>
+            ) : null}
+
+            {briefQuery.isError ? (
+              <div className="rounded-xl border border-red-600/15 bg-red-50 p-3 text-[12.5px] text-red-700">
+                {String((briefQuery.error as Error).message)}
+              </div>
+            ) : null}
+
+            {briefRequested && briefQuery.isLoading ? (
+              <div className="py-10 text-center text-[13px] text-slate-500">
+                Re-solving the network for consumer exposure and tested mitigation options…
+              </div>
+            ) : null}
+
+            {briefQuery.data ? (
+              <>
+                <div className="rounded-xl border border-teal-600/15 bg-teal-50/55 p-4">
+                  <div className="text-eyebrow">Service projection</div>
+                  <p className="mt-2 text-[13.5px] leading-relaxed text-slate-800">{briefQuery.data.service.statement}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    <Stat label="Coverage" value={advisoryPercent(briefQuery.data.service.coverage_rate)} sub={`${advisoryUnits(briefQuery.data.service.fulfilled)} units served`} tone="info" bar={briefQuery.data.service.coverage_rate} />
+                    <Stat label="Complete and on time" value={advisoryPercent(briefQuery.data.service.on_time_rate)} sub={`${advisoryUnits(briefQuery.data.service.on_time_units)} promise units`} tone={briefQuery.data.service.on_time_rate >= 0.99 ? 'success' : 'warning'} bar={briefQuery.data.service.on_time_rate} />
+                    <Stat label="Unmet demand" value={advisoryUnits(briefQuery.data.service.unmet)} sub={`${briefQuery.data.service.affected_destinations} destination(s) affected`} tone={briefQuery.data.service.unmet > 0 ? 'danger' : 'success'} />
+                    <Stat label="Critical unmet" value={advisoryUnits(briefQuery.data.service.critical_unmet_units)} sub="priority 1–2 demand" tone={briefQuery.data.service.critical_unmet_units > 0 ? 'danger' : 'success'} />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="min-w-0 rounded-xl border border-slate-900/[0.07] p-4">
+                    <div className="text-eyebrow">Destination exposure</div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Destination</TableHead>
+                          <TableHead className="text-right">Unmet</TableHead>
+                          <TableHead className="text-right">Late</TableHead>
+                          <TableHead className="text-right">On time</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {briefQuery.data.service.impacted_destinations.slice(0, 5).map((destination) => (
+                          <TableRow key={destination.destination_id}>
+                            <TableCell className="max-w-[180px] truncate text-[11.5px] text-slate-700">
+                              {destination.name}
+                            </TableCell>
+                            <TableCell className="text-right tabular text-red-600">{advisoryUnits(destination.unmet)}</TableCell>
+                            <TableCell className="text-right tabular text-amber-700">{advisoryUnits(destination.late)}</TableCell>
+                            <TableCell className="text-right tabular">{advisoryPercent(destination.on_time_rate)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <div className="min-w-0 rounded-xl border border-slate-900/[0.07] p-4">
+                    <div className="text-eyebrow">Largest service gaps</div>
+                    <ol className="mt-3 space-y-3">
+                      {briefQuery.data.service.largest_gaps.slice(0, 4).map((gap) => (
+                        <li key={`${gap.destination_id}-${gap.product_id}`} className="text-[12px]">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="font-medium text-slate-800">{gap.destination_name}</span>
+                            <span className="tabular font-semibold text-red-600">{advisoryUnits(gap.quantity)} u</span>
+                          </div>
+                          <div className="mt-0.5 text-slate-500">
+                            {gap.product_name} · {gap.summary}
+                          </div>
+                        </li>
+                      ))}
+                      {!briefQuery.data.service.largest_gaps.length ? (
+                        <li className="py-4 text-[12.5px] text-emerald-700">No unmet rows in this stress case.</li>
+                      ) : null}
+                    </ol>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-eyebrow">Solver-tested manufacturer moves</div>
+                    <Badge variant="secondary">
+                      {briefQuery.data.mitigation_summary.validated_options}/{briefQuery.data.mitigation_summary.options_tested} effective
+                    </Badge>
+                  </div>
+                  {briefQuery.data.recommendations.length ? (
+                    <ol className="mt-3 divide-y divide-slate-900/[0.05]">
+                      {briefQuery.data.recommendations.map((recommendation) => {
+                        const meta = MITIGATION_META[recommendation.kind] ?? {
+                          icon: Sparkles,
+                          label: recommendation.kind.replace(/_/g, ' '),
+                        };
+                        const Icon = meta.icon;
+                        const improved = recommendation.status === 'validated';
+                        return (
+                          <li key={recommendation.id} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_170px]">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={cn(
+                                  'flex h-7 w-7 items-center justify-center rounded-lg border',
+                                  improved
+                                    ? 'border-emerald-600/15 bg-emerald-50 text-emerald-600'
+                                    : 'border-slate-900/[0.07] bg-slate-50 text-slate-500',
+                                )}>
+                                  <Icon className="h-3.5 w-3.5" />
+                                </span>
+                                <Badge variant={improved ? 'success' : 'secondary'}>{recommendation.status.replace(/_/g, ' ')}</Badge>
+                                <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-slate-400">{meta.label}</span>
+                              </div>
+                              <div className="mt-2 text-[13px] font-semibold text-slate-900">{recommendation.title}</div>
+                              <p className="mt-1 text-[12px] leading-relaxed text-slate-600">{recommendation.description}</p>
+                              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                                Projected {advisoryPercent(recommendation.projected.coverage_rate)} coverage and{' '}
+                                {advisoryPercent(recommendation.projected.on_time_rate)} complete/on-time using{' '}
+                                {recommendation.solver}.
+                              </p>
+                              {recommendation.rows.length ? (
+                                <div className="mt-2 font-mono text-[10px] text-slate-500">
+                                  {recommendation.rows[0].destination_name} × {recommendation.rows[0].product_name}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="rounded-xl border border-slate-900/[0.07] bg-slate-50/55 p-3 sm:text-right">
+                              <div className="text-[9.5px] uppercase tracking-[0.14em] text-slate-400">Solver effect</div>
+                              <div className="mt-1 text-base font-semibold tabular text-slate-900">
+                                +{advisoryUnits(recommendation.effect.restored_units)} served
+                              </div>
+                              {recommendation.effect.on_time_restored_units > 0 ? (
+                                <div className="mt-1 text-[11px] tabular text-emerald-700">
+                                  +{advisoryUnits(recommendation.effect.on_time_restored_units)} on time
+                                </div>
+                              ) : null}
+                              <div className={cn('mt-2 font-mono text-[11px]', recommendation.effect.cost_delta > 0 ? 'text-amber-700' : 'text-emerald-700')}>
+                                {advisoryCost(recommendation.effect.cost_delta)}
+                              </div>
+                              {recommendation.effect.cost_per_restored_unit !== null ? (
+                                <div className="mt-1 text-[10px] text-slate-500">
+                                  ${recommendation.effect.cost_per_restored_unit.toFixed(2)} per restored unit
+                                </div>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  ) : (
+                    <div className="mt-3 rounded-xl border border-slate-900/[0.07] bg-slate-50/60 p-4 text-[12.5px] text-slate-600">
+                      No single isolated lever changed the computed plan. Run combined recovery to test all
+                      contingency lanes together.
+                    </div>
+                  )}
+                  {briefQuery.data.strategic_actions.length ? (
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {briefQuery.data.strategic_actions.map((action) => (
+                        <div key={`${action.kind}-${action.title}`} className="rounded-xl border border-amber-600/15 bg-amber-50/50 p-3">
+                          <div className="text-[12px] font-semibold text-amber-900">{action.title}</div>
+                          <p className="mt-1 text-[11.5px] leading-relaxed text-amber-800">{action.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <p className="text-[11px] leading-relaxed text-slate-500">{briefQuery.data.note}</p>
+              </>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}

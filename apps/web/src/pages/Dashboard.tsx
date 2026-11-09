@@ -446,6 +446,9 @@ export default function Dashboard() {
                   <Link to="/planner">Open in Planner</Link>
                 </Button>
                 <Button variant="outline" size="sm" asChild>
+                  <Link to="/resilience">Assess resilience</Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
                   <Link to="/recovery">Run recovery</Link>
                 </Button>
                 <Button variant="outline" size="sm" asChild>
