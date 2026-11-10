@@ -51,12 +51,12 @@ export default function Dashboard() {
   const { data: h, refetch: refreshHealth } = useQuery({ queryKey: ['health'], queryFn: health, retry: false });
   const { data: datasetsData, refetch: refreshDatasets } = useQuery({ queryKey: ['datasets'], queryFn: listDatasets });
   const { data: plansData, isLoading: plansLoading, isError: plansError, error: plansErrorDetail, refetch: refreshPlans } = useQuery({
-    queryKey: ['plans', 25],
-    queryFn: () => listPlans(25),
+    queryKey: ['plans', 100],
+    queryFn: () => listPlans(100),
   });
   const { data: scenarioData, isError: scenariosError, refetch: refreshScenarios } = useQuery({
-    queryKey: ['scenarios', 50],
-    queryFn: () => listScenarios(50),
+    queryKey: ['scenarios', 100],
+    queryFn: () => listScenarios(100),
   });
 
   const baselines = (plansData?.plans ?? []).filter((p) => p.type === 'baseline');
