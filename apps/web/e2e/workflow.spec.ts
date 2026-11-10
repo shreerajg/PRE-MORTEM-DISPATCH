@@ -257,6 +257,91 @@ test.describe('Pre-Mortem Dispatch — critical workflow', () => {
   });
 });
 
+test.describe('Operations dashboard', () => {
+  test('leads with real service coverage and a clear next action', async ({ page, request }) => {
+    const sample = await request.post('/api/v1/datasets/sample');
+    expect(sample.ok()).toBeTruthy();
+    const dataset = (await sample.json()) as { dataset_id: string };
+    const solved = await request.post('/api/v1/plans/', {
+      data: { dataset_id: dataset.dataset_id, solver: 'greedy' },
+    });
+    expect(solved.ok()).toBeTruthy();
+
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { name: 'Operations Dashboard' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Network operating status' })).toBeVisible();
+    await expect(page.getByText('Current network fulfillment')).toBeVisible();
+    await expect(page.getByText('100.0%', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('progressbar', { name: 'Network fulfillment' })).toHaveAttribute('aria-valuenow', '100');
+    const status = page.getByRole('region', { name: 'Network operating status' });
+    await expect(status.getByRole('link', { name: 'Assess resilience' })).toBeVisible();
+    await expect(status.getByRole('link', { name: 'Stress-test the plan' })).toBeVisible();
+    await expect(page.getByText('Sample Network (bundled)').last()).toBeVisible();
+  });
+
+  test('shows scenarios only for the selected baseline', async ({ page, request }) => {
+    const sample = await request.post('/api/v1/datasets/sample');
+    expect(sample.ok()).toBeTruthy();
+    const dataset = (await sample.json()) as { dataset_id: string };
+    const createBaseline = async () => {
+      const response = await request.post('/api/v1/plans/', {
+        data: { dataset_id: dataset.dataset_id, solver: 'greedy' },
+      });
+      expect(response.ok()).toBeTruthy();
+      return (await response.json()) as { id: string };
+    };
+    const first = await createBaseline();
+    const firstScenario = await request.post('/api/v1/scenarios/', {
+      data: {
+        baseline_plan_id: first.id,
+        name: 'First baseline lane failure',
+        disruption: { type: 'route_closure', params: { route_id: 'RT-03' } },
+      },
+    });
+    expect(firstScenario.ok()).toBeTruthy();
+
+    const second = await createBaseline();
+    const secondScenario = await request.post('/api/v1/scenarios/', {
+      data: {
+        baseline_plan_id: second.id,
+        name: 'Second baseline lane failure',
+        disruption: { type: 'route_closure', params: { route_id: 'RT-04' } },
+      },
+    });
+    expect(secondScenario.ok()).toBeTruthy();
+
+    await page.goto('/dashboard');
+    const baselineSelect = page.getByRole('combobox', { name: 'Active baseline plan' });
+    await expect(baselineSelect).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Second baseline lane failure', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'First baseline lane failure', exact: true })).toHaveCount(0);
+
+    await baselineSelect.selectOption(first.id);
+    await expect(page.getByRole('link', { name: 'First baseline lane failure', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Second baseline lane failure', exact: true })).toHaveCount(0);
+    await page.getByRole('link', { name: 'First baseline lane failure' }).click();
+    await expect(page).toHaveURL('/compare');
+  });
+
+  test('fits the operating overview on a phone without horizontal overflow', async ({ page, request }) => {
+    const sample = await request.post('/api/v1/datasets/sample');
+    expect(sample.ok()).toBeTruthy();
+    const dataset = (await sample.json()) as { dataset_id: string };
+    const solved = await request.post('/api/v1/plans/', {
+      data: { dataset_id: dataset.dataset_id, solver: 'greedy' },
+    });
+    expect(solved.ok()).toBeTruthy();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/dashboard');
+    await expect(page.getByRole('region', { name: 'Network operating status' })).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+});
+
 test.describe('Resilience intelligence', () => {
   test('assesses readiness and ranks solver-tested recovery moves', async ({ page }) => {
     await page.goto('/datasets');

@@ -239,6 +239,7 @@ export type PlanResponse = {
   kpis: KPISnapshot;
   diagnostics?: Record<string, unknown>;
   utilization?: Record<string, unknown>;
+  delivery_risk?: DeliveryRisk;
   constraints?: { respect_deadlines?: boolean };
   unmet_diagnosis?: UnmetDiagnosis[];
 };
