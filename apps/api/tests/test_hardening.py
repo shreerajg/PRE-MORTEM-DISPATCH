@@ -146,6 +146,27 @@ def test_scenario_csv_escapes_spreadsheet_formulas_without_changing_numbers():
     assert ["cost_delta", "-12.5"] in rows
 
 
+def test_csv_parser_preserves_utf8_headers_and_rejects_ambiguous_files():
+    from app.services.validation import parse_csv
+
+    assert parse_csv(b"\xef\xbb\xbfname,quantity\nCaf\xc3\xa9,2\n") == [
+        {"name": "Caf\N{LATIN SMALL LETTER E WITH ACUTE}", "quantity": "2"}
+    ]
+    assert parse_csv(b'name,notes\nWidget,"one, two"\n') == [
+        {"name": "Widget", "notes": "one, two"}
+    ]
+
+    for content, expected_error in (
+        (b"id,id\n1,2\n", "duplicate column"),
+        (b"name,quantity\nWidget,1,unexpected\n", "more values"),
+        (b"name,quantity\nWidget\n", "missing one or more fields"),
+        (b'name,quantity\nWidget,"unterminated\n', "Invalid CSV"),
+        (b"name,quantity\n\xff,1\n", "UTF-8"),
+    ):
+        with pytest.raises(ValueError, match=expected_error):
+            parse_csv(content)
+
+
 def test_non_finite_numbers_are_rejected_not_propagated():
     assert as_float("nan") == 0.0
     assert as_float("inf") == 0.0

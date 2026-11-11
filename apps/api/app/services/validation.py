@@ -1,149 +1,75 @@
 from __future__ import annotations
 
+import csv
 import io
 import math
 from typing import Any, Dict, List
 
-try:
-    import pandas as pd  # type: ignore
-
-    _HAS_PANDAS = True
-except ImportError:
-    pd = None  # type: ignore
-    _HAS_PANDAS = False
-
 from app.domain.schemas import ValidationIssue, ValidationReport
 
 
-def _csv_fallback_parse(file) -> List[Dict[str, Any]]:
-    """Pure-python CSV fallback when pandas is unavailable."""
-    import csv
-
-    text = None
+def _read_csv_text(file) -> str:
     if hasattr(file, "file") and hasattr(file, "filename"):
-        try:
-            file.file.seek(0)
-        except Exception:
-            pass
-        raw = file.file.read()
-        if isinstance(raw, bytes):
-            text = raw.decode("utf-8", errors="replace")
-        else:
-            text = str(raw)
-        try:
-            file.file.seek(0)
-        except Exception:
-            pass
+        stream = file.file
     elif isinstance(file, (bytes, bytearray)):
-        text = bytes(file).decode("utf-8", errors="replace")
+        stream = io.BytesIO(file)
     elif hasattr(file, "read"):
-        try:
-            file.seek(0)
-        except Exception:
-            pass
-        raw = file.read()
-        if isinstance(raw, bytes):
-            text = raw.decode("utf-8", errors="replace")
-        else:
-            text = str(raw)
-        try:
-            file.seek(0)
-        except Exception:
-            pass
+        stream = file
     elif isinstance(file, str):
         if "\n" in file and "," in file:
-            text = file
-        else:
-            # treat as file path
-            with open(file, "r", encoding="utf-8", errors="replace") as f:
-                text = f.read()
+            return file
+        with open(file, "r", encoding="utf-8-sig", newline="") as source:
+            return source.read()
     else:
         raise ValueError(f"Unsupported file type for CSV parsing: {type(file)}")
 
-    reader = csv.DictReader(io.StringIO(text))
-    records: List[Dict[str, Any]] = []
-    for row in reader:
-        cleaned: Dict[str, Any] = {}
-        for k, v in row.items():
-            if v is None or (isinstance(v, str) and v.strip() == ""):
-                cleaned[k] = None
-            else:
-                vs = str(v).strip()
-                # try numeric coercion later in validation; keep string for now but attempt float/int
-                cleaned[k] = vs
-        records.append(cleaned)
-    return records
+    try:
+        stream.seek(0)
+    except (AttributeError, OSError):
+        pass
+    content = stream.read()
+    try:
+        stream.seek(0)
+    except (AttributeError, OSError):
+        pass
+    if isinstance(content, bytes):
+        try:
+            return content.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError("CSV files must use UTF-8 encoding") from exc
+    return str(content).lstrip("\ufeff")
 
 
 def parse_csv(file) -> List[Dict[str, Any]]:
-    """
-    Parse an uploaded file (or file-like/bytes) into list[dict] using pandas.
-    Accepts FastAPI UploadFile, bytes, or any file-like object.
-    Falls back to csv module if pandas is not available.
-    """
-    if not _HAS_PANDAS:
-        return _csv_fallback_parse(file)
+    """Parse uploaded UTF-8 CSV data using Python's standard library."""
     try:
-        # FastAPI UploadFile
-        if hasattr(file, "file") and hasattr(file, "filename"):
-            try:
-                file.file.seek(0)
-            except Exception:
-                pass
-            df = pd.read_csv(file.file)
-        elif isinstance(file, (bytes, bytearray)):
-            df = pd.read_csv(io.BytesIO(file))
-        elif hasattr(file, "read"):
-            try:
-                file.seek(0)
-            except Exception:
-                pass
-            content = file.read()
-            if isinstance(content, bytes):
-                df = pd.read_csv(io.BytesIO(content))
-            else:
-                df = pd.read_csv(io.StringIO(str(content)))
-            try:
-                file.seek(0)
-            except Exception:
-                pass
-        elif isinstance(file, str):
-            if "\n" in file and "," in file:
-                df = pd.read_csv(io.StringIO(file))
-            else:
-                df = pd.read_csv(file)
-        else:
-            df = pd.read_csv(file)
-
-        df = df.replace({pd.NA: None})
-        records = df.to_dict(orient="records")
-        cleaned: List[Dict[str, Any]] = []
-        for r in records:
-            nr: Dict[str, Any] = {}
-            for k, v in r.items():
-                if pd.isna(v):
-                    nr[k] = None
-                else:
-                    nr[k] = v
-            cleaned.append(nr)
-        return cleaned
-    except Exception as e:
-        # fallback to csv module on pandas failure
-        try:
-            return _csv_fallback_parse(file)
-        except Exception:
-            raise ValueError(f"Failed to parse CSV: {e}") from e
+        reader = csv.DictReader(io.StringIO(_read_csv_text(file), newline=""), strict=True)
+        if reader.fieldnames is None:
+            raise ValueError("CSV is missing a header row")
+        if any(not name or not name.strip() for name in reader.fieldnames):
+            raise ValueError("CSV contains an empty column name")
+        if len(set(reader.fieldnames)) != len(reader.fieldnames):
+            raise ValueError("CSV contains duplicate column names")
+        records: List[Dict[str, Any]] = []
+        for row in reader:
+            if None in row:
+                raise ValueError("CSV row contains more values than its header")
+            if any(value is None for value in row.values()):
+                raise ValueError("CSV row is missing one or more fields")
+            records.append(
+                {
+                    key: value.strip() if isinstance(value, str) and value.strip() else None
+                    for key, value in row.items()
+                }
+            )
+        return records
+    except csv.Error as exc:
+        raise ValueError(f"Invalid CSV: {exc}") from exc
 
 
 def _is_missing(v: Any) -> bool:
     if v is None:
         return True
-    if _HAS_PANDAS and isinstance(v, float):
-        try:
-            if pd.isna(v):  # type: ignore
-                return True
-        except Exception:
-            pass
     if isinstance(v, float) and (v != v):  # NaN check without pandas
         return True
     if isinstance(v, str) and v.strip() == "":
