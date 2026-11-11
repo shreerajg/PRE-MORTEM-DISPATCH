@@ -128,8 +128,8 @@ curl -s http://127.0.0.1:8000/api/v1/health/ready | python -m json.tool
 ## Release checklist
 
 1. `scripts/ci.sh` — backend tests, typecheck, build, browser workflow and container builds
-2. Or run the individual commands from the README / enable
-   [`github-actions-ci.yml`](github-actions-ci.yml) under `.github/workflows/ci.yml`
+2. Confirm GitHub Actions is green for the branch or pull request; the repository workflow also
+   audits Python and npm dependencies on every push to `main` and pull request
 3. Set `API_TOKEN`, `ALLOWED_HOSTS`, `DOCS_ENABLED=false`, and real CORS origins as needed
 4. Back up the volume before upgrading
 5. Probe `/health/ready` after rollout and confirm an `X-Request-ID` appears in logs

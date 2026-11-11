@@ -148,8 +148,8 @@ it respects `prefers-reduced-motion`.
 ```bash
 # Terminal 1 — API
 cd apps/api
-pip install -r requirements-dev.txt
-uvicorn app.main:app --reload --port 8000
+python -m pip install -r requirements-dev.txt
+python -m uvicorn app.main:app --reload --port 8000
 
 # Terminal 2 — UI
 cd apps/web
@@ -177,7 +177,7 @@ For a gated deployment set `API_TOKEN` before starting (see [Production operatio
 
 ```bash
 pip install -r apps/api/requirements-ortools.txt
-SOLVER=ortools uvicorn app.main:app --port 8000
+SOLVER=ortools python -m uvicorn app.main:app --port 8000
 ```
 
 Without it the greedy engine runs and `diagnostics.fallback` says so — the app never pretends
@@ -189,23 +189,27 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation, lifecycle, resilience and full API workflow
-python -m pytest apps/api/tests -q          # 101 passed
+python -m pytest apps/api/tests -q          # 102 passed
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
 
 # Browser E2E — starts the API and Vite itself, on a separate e2e database
-cd apps/web && npx playwright test          # 18 passed
+cd apps/web && npx playwright test          # 21 passed
 ```
+
+Create an isolated backend environment once with `python -m venv apps/api/.venv`, then use its
+Python executable for installs and checks. This avoids conflicts with unrelated machine-wide
+packages. The core CSV reader uses the Python standard library; no dataframe dependency is needed.
 
 `playwright.config.ts` auto-starts both processes and reuses already-running servers locally, so
 the E2E command needs no terminal setup. Set `E2E_DATABASE_URL` to isolate the run from
 `apps/api/data/e2e.db`.
 
 [`scripts/ci.sh`](scripts/ci.sh) runs tests, typecheck, build, browser workflow and container
-builds locally. The GitHub Actions definition is kept at
-[`docs/github-actions-ci.yml`](docs/github-actions-ci.yml) with a one-line enable command — the
-current repository credential lacks the `workflow` OAuth scope needed to push that path.
+builds locally. GitHub Actions runs the backend suite, frontend typecheck/build, browser workflow,
+dependency audits and container builds on pushes to `main` and pull requests via
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 [`apps/web/scripts/capture-docs.mjs`](apps/web/scripts/capture-docs.mjs) replays the demo path in
 a browser and rewrites the screenshots above, so the images in this README are generated from the

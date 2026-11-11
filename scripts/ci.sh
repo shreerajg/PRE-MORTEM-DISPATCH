@@ -6,6 +6,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+echo "== backend dependency audit"
+python -m pip install pip-audit==2.10.1
+python -m pip_audit -r apps/api/requirements-dev.txt
+
 echo "== backend tests"
 python -m pytest apps/api/tests -q
 
@@ -14,6 +18,7 @@ echo "== frontend typecheck + build"
   cd apps/web
   npm run typecheck
   npm run build
+  npm audit --audit-level=moderate
 )
 
 echo "== browser workflow (starts API + Vite itself)"
