@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local equivalent of the GitHub Actions workflow in docs/github-actions-ci.yml.
-# Run from anywhere: scripts/ci.sh
+# Run after activating apps/api/.venv: scripts/ci.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

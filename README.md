@@ -148,6 +148,8 @@ it respects `prefers-reduced-motion`.
 ```bash
 # Terminal 1 — API
 cd apps/api
+python -m venv .venv
+# Activate .venv first (Windows: .venv\\Scripts\\activate)
 python -m pip install -r requirements-dev.txt
 python -m uvicorn app.main:app --reload --port 8000
 
@@ -176,7 +178,7 @@ For a gated deployment set `API_TOKEN` before starting (see [Production operatio
 ### Optional: exact solver
 
 ```bash
-pip install -r apps/api/requirements-ortools.txt
+python -m pip install -r apps/api/requirements-ortools.txt
 SOLVER=ortools python -m uvicorn app.main:app --port 8000
 ```
 
@@ -189,7 +191,8 @@ OR-Tools ran.
 
 ```bash
 # Backend: allocation, lifecycle, resilience and full API workflow
-python -m pytest apps/api/tests -q          # 102 passed
+apps/api/.venv/Scripts/python -m pytest apps/api/tests -q  # 102 passed (Windows)
+# On macOS/Linux, use apps/api/.venv/bin/python instead.
 
 # Frontend typecheck + production build
 cd apps/web && npm run build
@@ -198,18 +201,19 @@ cd apps/web && npm run build
 cd apps/web && npx playwright test          # 21 passed
 ```
 
-Create an isolated backend environment once with `python -m venv apps/api/.venv`, then use its
-Python executable for installs and checks. This avoids conflicts with unrelated machine-wide
-packages. The core CSV reader uses the Python standard library; no dataframe dependency is needed.
+The backend uses standard-library CSV parsing, so no dataframe dependency is installed just to read imports.
+The API dependency pins are shared by development, CI and the container image. An isolated `.venv` keeps
+these dependencies separate from other Python projects on your machine.
 
 `playwright.config.ts` auto-starts both processes and reuses already-running servers locally, so
 the E2E command needs no terminal setup. Set `E2E_DATABASE_URL` to isolate the run from
 `apps/api/data/e2e.db`.
 
-[`scripts/ci.sh`](scripts/ci.sh) runs tests, typecheck, build, browser workflow and container
-builds locally. GitHub Actions runs the backend suite, frontend typecheck/build, browser workflow,
-dependency audits and container builds on pushes to `main` and pull requests via
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+[`scripts/ci.sh`](scripts/ci.sh) runs Python and npm dependency audits, backend tests, frontend
+typecheck/build, browser workflow and (when Docker is available) container builds. A GitHub Actions
+workflow template is available at [`docs/github-actions-ci.yml`](docs/github-actions-ci.yml).
+Enable it at `.github/workflows/ci.yml` with a GitHub credential that has the required `workflow`
+scope; the current repository credential does not have permission to push workflow files.
 
 [`apps/web/scripts/capture-docs.mjs`](apps/web/scripts/capture-docs.mjs) replays the demo path in
 a browser and rewrites the screenshots above, so the images in this README are generated from the
