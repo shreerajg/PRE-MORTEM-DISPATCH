@@ -115,8 +115,8 @@ def list_scenarios(limit: int = 25, offset: int = 0):
         ]
         plans = db.get_plan_kpis_by_ids(plan_ids)
         total = db.count_scenarios()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to read scenarios") from None
     return {
         "scenarios": [_scenario_summary(s, plans) for s in scenarios],
         "total": total,
@@ -157,8 +157,8 @@ def create_scenario(body: ScenarioCreate):
         new_inventory, new_routes, description = apply_disruptions(inventory, routes, requested)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Disruption failed: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Disruption failed; verify the disruption configuration") from None
 
     disrupted_input = AllocationInput(
         inventory=new_inventory,
@@ -197,8 +197,8 @@ def create_scenario(body: ScenarioCreate):
     }
     try:
         db.save_plan(disrupted_plan_id, dataset_id, type="disrupted", status="completed", solver=disrupted_result.solver, created_at=created_at, data=disrupted_data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save disrupted plan: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save disrupted plan") from None
 
     # Save scenario
     scenario_id = str(uuid.uuid4())
@@ -215,8 +215,8 @@ def create_scenario(body: ScenarioCreate):
             created_at=created_at,
             name=scenario_name,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save scenario: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save scenario") from None
 
     record_activity(
         "scenario.created",
@@ -338,8 +338,8 @@ def sweep_scenario(body: SweepRequest):
         )
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Sweep failed: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Sensitivity sweep failed") from None
 
     return {
         "baseline_plan_id": body.baseline_plan_id,
@@ -441,13 +441,15 @@ def recover_scenario(scenario_id: str):
     # Re-apply the stored disruption(s) to get the same disrupted inputs (idempotent)
     try:
         replay = _stored_disruptions(scen.get("disruption", {}))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid disruption in scenario: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid disruption stored for this scenario") from None
 
     try:
         new_inventory, new_routes, description = apply_disruptions(inventory, routes, replay)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to replay the disruption; verify the stored scenario") from None
 
     disrupted_input = AllocationInput(
         inventory=new_inventory,
@@ -488,14 +490,14 @@ def recover_scenario(scenario_id: str):
     }
     try:
         db.save_plan(recovered_plan_id, dataset_id, type="recovered", status="completed", solver=recovered_result.solver, created_at=created_at, data=recovered_data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save recovered plan: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save recovered plan") from None
 
     # Update scenario
     try:
         db.update_scenario(scenario_id, {"recovered_plan_id": recovered_plan_id, "status": "recovered"})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update scenario: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save scenario recovery") from None
 
     recovery_actions = recovered_result.diagnostics.get("recovery_actions", []) if isinstance(recovered_result.diagnostics, dict) else []
     residual_unmet = recovered_data["unmet"]
@@ -535,15 +537,15 @@ def get_scenario_brief(scenario_id: str):
 
     try:
         disruptions = _stored_disruptions(scen.get("disruption", {}))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid disruption in scenario: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid disruption stored for this scenario") from None
 
     try:
         return scenario_brief(ds.get("meta", {}), baseline_plan, disruptions, scen)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Scenario brief failed: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Could not compute the scenario brief") from None
 
 
 @router.get("/{scenario_id}/compare")
@@ -719,8 +721,8 @@ def export_scenario_file(scenario_id: str):
 
     try:
         payload = export_scenario_csv(scen, ordered)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Export failed: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to export scenario") from None
 
     filename = f"pre-mortem-scenario-{scenario_id[:8]}.csv"
     return Response(

@@ -31,8 +31,8 @@ def get_forecast(
                 if str(dem.get("destination_id")) == str(destination_id) and str(dem.get("product_id")) == str(product_id):
                     history.append({"quantity": float(dem.get("quantity", 0) or 0)})
                     break
-    except Exception:
-        history = []
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not read forecast history") from exc
 
     if not history:
         return {
@@ -49,10 +49,7 @@ def get_forecast(
     # Datasets arrive newest first; the moving average expects oldest -> newest.
     history.reverse()
 
-    try:
-        forecast = baseline_forecast(history, horizon=horizon)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    forecast = baseline_forecast(history, horizon=horizon)
 
     return {
         "destination_id": destination_id,

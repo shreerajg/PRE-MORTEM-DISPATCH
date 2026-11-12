@@ -22,8 +22,10 @@ def _database_status() -> tuple[str, str | None]:
         finally:
             conn.close()
         return "ok", None
-    except Exception as exc:  # noqa: BLE001 - health checks must never raise
-        return "error", str(exc)[:200]
+    except Exception:  # noqa: BLE001 - health checks must never raise
+        # Health probes are unauthenticated; never expose database paths or
+        # adapter errors in their response body.
+        return "error", "Database probe failed"
 
 
 def _ready_body() -> dict:

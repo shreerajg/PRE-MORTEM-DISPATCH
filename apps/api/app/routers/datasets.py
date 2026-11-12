@@ -85,8 +85,9 @@ def _parse_upload(file: UploadFile | None) -> List[Dict[str, Any]]:
     try:
         # Use parse_csv helper which handles UploadFile
         return parse_csv(file)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse {file.filename}: {e}")
+    except ValueError as exc:
+        filename = Path(file.filename or "upload.csv").name
+        raise HTTPException(status_code=400, detail=f"Failed to parse {filename}: {exc}") from None
 
 
 def _preview(records: List[Dict[str, Any]], n: int = 5) -> List[Dict[str, Any]]:
@@ -99,8 +100,8 @@ def _check_upload(name: str, upload: UploadFile) -> None:
     ``UploadFile.size`` is normally filled by Starlette's multipart parser. If it
     is missing, measure the spooled file so the byte limit still applies.
     """
-    filename = (upload.filename or "").lower()
-    if filename and not filename.endswith(".csv"):
+    filename = Path(upload.filename or "").name.lower()
+    if not filename or not filename.endswith(".csv"):
         raise HTTPException(
             status_code=400, detail=f"{name} must be a .csv file (got '{upload.filename}')"
         )
@@ -157,16 +158,16 @@ async def import_dataset(
         dem_data = parse_csv(demand)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"CSV parsing failed: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="CSV parsing failed") from None
 
     try:
         result = _persist_dataset(
             wh_data, dest_data, prod_data, route_data, inv_data, dem_data,
             name=f"upload-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save dataset: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save dataset") from None
     record_activity(
         "dataset.created",
         "dataset",
@@ -187,8 +188,8 @@ def load_sample_dataset():
     try:
         for t in SAMPLE_TABLES:
             tables[t] = _read_sample_csv(sample_dir / f"{t}.csv")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read sample data: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to read sample data") from None
 
     try:
         result = _persist_dataset(
@@ -196,8 +197,8 @@ def load_sample_dataset():
             tables["routes"], tables["inventory"], tables["demand"],
             name="Sample Network (bundled)",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save sample dataset: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save sample dataset") from None
     record_activity(
         "dataset.created",
         "dataset",
@@ -212,8 +213,8 @@ def list_datasets():
     try:
         datasets = db.list_dataset_summaries()
         return {"datasets": datasets, "total": db.count_datasets()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to read datasets") from None
 
 
 @router.get("/{dataset_id}")
@@ -268,8 +269,8 @@ def delete_dataset(dataset_id: str):
 
     try:
         deleted = db.delete_dataset_cascade(dataset_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete dataset: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to delete dataset") from None
     if deleted is None:
         raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
 

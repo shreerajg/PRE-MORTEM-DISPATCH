@@ -417,8 +417,4 @@ Deployment details, backup commands and the incident checklist live in
 - **Not** LLM-dependent. An LLM may narrate computed results later; it is never the source of
   quantities, costs or feasibility.
 
-## Roadmap without pretending
 
-- Weight/volume constraints on lanes (product `weight_kg` is already captured)
-- Trained demand forecasting once a real history exists, with backtested error
-- Postgres + concurrent scenarios behind the existing repository interface

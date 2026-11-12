@@ -85,7 +85,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             logger.exception(
                 "%s %s failed after %.1f ms [%s]",
                 request.method,
-                request.url.path,
+                request.scope.get("path", ""),
                 elapsed_ms,
                 request_id,
             )
@@ -96,7 +96,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         logger.info(
             "%s %s %s %.1fms [%s]",
             request.method,
-            request.url.path,
+            request.scope.get("path", ""),
             response.status_code,
             elapsed_ms,
             request_id,
@@ -127,7 +127,9 @@ class OperatorAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         token = settings.api_token.strip()
-        path = request.url.path.rstrip("/") or "/"
+        # Use the raw ASGI path for access-control decisions. URL reconstruction
+        # may interpret attacker-controlled Host characters as path separators.
+        path = request.scope.get("path", "").rstrip("/") or "/"
         if (
             not token
             or request.method == "OPTIONS"
@@ -135,7 +137,6 @@ class OperatorAuthMiddleware(BaseHTTPMiddleware):
             or path in _AUTH_PUBLIC_PATHS
         ):
             return await call_next(request)
-
         authorization = request.headers.get("authorization", "").strip()
         supplied = ""
         if authorization.lower().startswith("bearer "):
@@ -153,7 +154,10 @@ class OperatorAuthMiddleware(BaseHTTPMiddleware):
                 "code": "unauthorized",
                 "request_id": getattr(request.state, "request_id", None),
             },
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer",
+                "Cache-Control": "no-store",
+            },
         )
 
 
@@ -193,9 +197,10 @@ def create_app() -> FastAPI:
     application.add_middleware(
         CORSMiddleware,
         allow_origins=get_cors_origins(),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        # The API uses bearer headers, never cross-site ambient cookies.
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
         expose_headers=["X-Request-ID", "X-Process-Time-Ms"],
     )
     application.add_middleware(SecurityHeadersMiddleware)

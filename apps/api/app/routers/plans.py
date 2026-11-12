@@ -92,8 +92,8 @@ def create_plan(body: PlanCreateRequest):
 
     try:
         db.save_plan(plan_id, body.dataset_id, type="baseline", status="completed", solver=solver_used, created_at=created_at, data=data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save plan: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save plan") from None
 
     record_activity(
         "plan.created",
@@ -134,8 +134,8 @@ def list_plans(limit: int = 25, offset: int = 0, plan_type: Optional[str] = None
     try:
         plans = db.list_plans(limit=limit, plan_type=plan_type, offset=offset)
         total = db.count_plans(plan_type)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to read plans") from None
     return {"plans": plans, "total": total, "limit": limit, "offset": offset}
 
 
@@ -188,8 +188,8 @@ def get_plan_resilience(plan_id: str):
         return assess_plan_resilience(ds.get("meta", {}), plan)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Resilience assessment failed: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Resilience assessment failed") from None
 
 
 @router.delete("/{plan_id}")

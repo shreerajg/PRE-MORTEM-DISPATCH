@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # config.py lives at <repo>/apps/api/app/core/config.py
@@ -31,6 +32,14 @@ class Settings(BaseSettings):
     security_headers: bool = True
     log_level: str = "INFO"
     app_version: str = "1.0.0"
+
+    @field_validator("api_token")
+    @classmethod
+    def require_entropy_for_operator_token(cls, value: str) -> str:
+        token = value.strip()
+        if token and len(token) < 16:
+            raise ValueError("API_TOKEN must contain at least 16 characters; generate a random token (e.g. openssl rand -hex 24)")
+        return token
 
 
 settings = Settings()
