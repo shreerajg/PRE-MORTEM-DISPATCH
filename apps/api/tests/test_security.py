@@ -66,6 +66,7 @@ def test_security_headers_and_no_store(client):
     assert res.headers["X-Frame-Options"] == "DENY"
     assert res.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
     assert res.headers["Cache-Control"] == "no-store"
+    assert res.headers["Content-Security-Policy"] == "default-src 'none'; frame-ancestors 'none'"
     assert res.headers["X-Request-ID"]
 
 

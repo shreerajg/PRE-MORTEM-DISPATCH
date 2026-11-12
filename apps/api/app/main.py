@@ -112,8 +112,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if settings.security_headers:
             for header, value in _SECURITY_HEADERS.items():
                 response.headers.setdefault(header, value)
-            if request.url.path.startswith("/api/"):
+            path = request.scope.get("path", "")
+            if path.startswith("/api/"):
                 response.headers.setdefault("Cache-Control", "no-store")
+                response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
         return response
 
 

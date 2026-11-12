@@ -481,7 +481,12 @@ def update_scenario(scenario_id: str, fields: Dict[str, Any]) -> None:
 # Counts (list responses report the real total, not just the page size)
 # ---------------------------------------------------------------------------
 
+_ALLOWED_COUNT_TABLES = {"datasets", "plans", "scenarios", "activity"}
+
+
 def _count(table: str, where: str = "", params: List[Any] | None = None) -> int:
+    if table not in _ALLOWED_COUNT_TABLES:
+        raise ValueError(f"Invalid table for count: {table}")
     conn = _connect()
     try:
         cur = conn.execute(f"SELECT COUNT(*) AS n FROM {table}{where}", params or [])
