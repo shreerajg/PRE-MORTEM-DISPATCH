@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 
-TOKEN = "s3cret-operator-token"
+import pytest
+from pydantic import ValidationError
+
+TOKEN = "s3cret-operator-token-value-is-long-enough"
 
 
 def test_auth_is_open_by_default(client):
@@ -16,6 +19,43 @@ def test_auth_is_open_by_default(client):
     assert client.get("/api/v1/auth/check").json()["ok"] is True
 
 
+def test_api_token_requires_a_minimum_length():
+    from app.core.config import Settings
+
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        Settings(api_token="too-short")
+
+    assert len(Settings(api_token="x" * 32).api_token) == 32
+
+
+def test_production_auth_mode_fails_closed_without_a_token(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "api_token", "")
+    monkeypatch.setattr(settings, "auth_required", True)
+
+    denied = client.get("/api/v1/datasets/")
+    assert denied.status_code == 401
+    assert denied.json()["code"] == "unauthorized"
+    assert denied.json()["request_id"] is None
+
+    # Readiness, liveness, and auth discovery remain available to orchestration/login.
+    assert client.get("/api/v1/auth/status").status_code == 200
+    assert client.get("/api/v1/health/live").status_code == 200
+
+
+def test_malformed_host_cannot_bypass_operator_gate(client, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "api_token", TOKEN)
+    response = client.get(
+        "/api/v1/datasets/",
+        headers={"Host": "example.test/api/v1/auth/status"},
+    )
+    assert response.status_code == 401
+    assert response.json()["code"] == "unauthorized"
+
+
 def test_operator_token_gates_the_api_but_not_health(client, monkeypatch):
     from app.core.config import settings
 
@@ -23,11 +63,13 @@ def test_operator_token_gates_the_api_but_not_health(client, monkeypatch):
 
     assert client.get("/api/v1/auth/status").json()["required"] is True
 
-    denied = client.get("/api/v1/datasets/")
+    denied = client.get("/api/v1/datasets/", headers={"X-Request-ID": "caller-chosen-id"})
     assert denied.status_code == 401
     assert denied.json()["code"] == "unauthorized"
-    assert denied.json()["request_id"] == denied.headers["X-Request-ID"]
+    assert denied.json()["request_id"] is None
+    assert denied.headers["X-Request-ID"] == "caller-chosen-id"
     assert denied.headers["WWW-Authenticate"] == "Bearer"
+    assert denied.headers["Cache-Control"] == "no-store"
 
     # Probes and discovery stay reachable so orchestration and the login page work.
     assert client.get("/api/v1/health").status_code == 200
@@ -68,6 +110,21 @@ def test_security_headers_and_no_store(client):
     assert res.headers["Cache-Control"] == "no-store"
     assert res.headers["Content-Security-Policy"] == "default-src 'none'; frame-ancestors 'none'"
     assert res.headers["X-Request-ID"]
+
+
+def test_health_does_not_expose_database_error_details(client, monkeypatch):
+    import app.routers.health as health
+
+    def dead_connect():
+        raise RuntimeError("sqlite path C:/sensitive/production.db secret-value")
+
+    monkeypatch.setattr(health, "_connect", dead_connect)
+
+    ready = client.get("/api/v1/health/ready")
+    assert ready.status_code == 503
+    assert ready.json()["db_error"] == "Database probe failed"
+    assert "production.db" not in ready.text
+    assert "secret-value" not in ready.text
 
 
 def test_liveness_survives_a_dead_database(client, monkeypatch):

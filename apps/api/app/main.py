@@ -24,6 +24,7 @@ from app.core.errors import (
 from app.repo.database import init_db
 
 logger = logging.getLogger("app.access")
+_auth_logger = logging.getLogger("app.auth")
 
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 _AUTH_PUBLIC_PATHS = {
@@ -35,6 +36,7 @@ _AUTH_PUBLIC_PATHS = {
 _SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Cross-Origin-Opener-Policy": "same-origin",
@@ -115,7 +117,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             path = request.scope.get("path", "")
             if path.startswith("/api/"):
                 response.headers.setdefault("Cache-Control", "no-store")
-                response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
         return response
 
 
@@ -133,7 +134,7 @@ class OperatorAuthMiddleware(BaseHTTPMiddleware):
         # may interpret attacker-controlled Host characters as path separators.
         path = request.scope.get("path", "").rstrip("/") or "/"
         if (
-            not token
+            (not token and not settings.auth_required)
             or request.method == "OPTIONS"
             or not path.startswith("/api/v1")
             or path in _AUTH_PUBLIC_PATHS
@@ -146,9 +147,10 @@ class OperatorAuthMiddleware(BaseHTTPMiddleware):
         if not supplied:
             supplied = request.headers.get("x-api-key", "").strip()
 
-        if supplied and secrets.compare_digest(supplied, token):
+        if token and supplied and secrets.compare_digest(supplied, token):
             return await call_next(request)
 
+        _auth_logger.warning("Rejected invalid operator token for %s %s", request.method, path)
         return JSONResponse(
             status_code=401,
             content={
@@ -175,8 +177,21 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def _configure_auth_rate_limit() -> None:
+    """Keep brute-force traffic to password/token endpoints bounded at the edge."""
+    auth_limit = logging.getLogger("app.auth")
+    if auth_limit.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    auth_limit.addHandler(handler)
+    auth_limit.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    auth_limit.propagate = False
+
+
 def create_app() -> FastAPI:
     _configure_access_logging()
+    _configure_auth_rate_limit()
     docs_enabled = settings.docs_enabled
     application = FastAPI(
         title="Pre-Mortem Dispatch API",

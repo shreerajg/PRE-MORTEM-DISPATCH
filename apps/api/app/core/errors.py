@@ -25,7 +25,21 @@ def _request_id(request: Request) -> str | None:
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """HTTP errors keep their status and message, wrapped in the standard envelope."""
+    """HTTP errors use a standard envelope; server errors never expose internals."""
+    if exc.status_code >= 500:
+        logger.error(
+            "Server error on %s %s [%s]: %s",
+            request.method,
+            request.scope.get("path", ""),
+            _request_id(request),
+            exc.detail,
+        )
+        content = {"detail": "Internal server error", "code": "internal_error"}
+        rid = _request_id(request)
+        if rid:
+            content["request_id"] = rid
+        return JSONResponse(status_code=exc.status_code, content=content)
+
     detail = exc.detail if isinstance(exc.detail, str) else "Request failed"
     content = {
         "detail": detail,

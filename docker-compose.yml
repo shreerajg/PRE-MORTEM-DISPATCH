@@ -13,7 +13,8 @@ services:
       DATABASE_URL: sqlite:////app/state/app.db
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
       SOLVER: ${SOLVER:-greedy}
-      API_TOKEN: ${API_TOKEN:-}
+      API_TOKEN: ${API_TOKEN:?Set API_TOKEN to a random 32+ character token before starting Compose}
+      AUTH_REQUIRED: "true"
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
       SECURITY_HEADERS: ${SECURITY_HEADERS:-true}

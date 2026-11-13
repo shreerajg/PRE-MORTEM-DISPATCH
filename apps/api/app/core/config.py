@@ -16,6 +16,7 @@ class Settings(BaseSettings):
         # root file is second so it wins over an app-local override.
         env_file=(str(_API_ROOT / ".env"), str(_REPO_ROOT / ".env")),
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     database_url: str = "sqlite:///./data/app.db"
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
 
     # Production controls. Empty values keep the single-operator demo unlocked.
     api_token: str = ""  # when set, /api/v1 requires Bearer <token> or X-API-Key
+    auth_required: bool = False  # allow the open demo locally; require tokens in production
     allowed_hosts: str = ""  # comma-separated; empty disables host filtering
     docs_enabled: bool = True
     security_headers: bool = True
@@ -37,8 +39,8 @@ class Settings(BaseSettings):
     @classmethod
     def require_entropy_for_operator_token(cls, value: str) -> str:
         token = value.strip()
-        if token and len(token) < 16:
-            raise ValueError("API_TOKEN must contain at least 16 characters; generate a random token (e.g. openssl rand -hex 24)")
+        if token and len(token) < 32:
+            raise ValueError("API_TOKEN must contain at least 32 characters; generate one with openssl rand -hex 32")
         return token
 
 
