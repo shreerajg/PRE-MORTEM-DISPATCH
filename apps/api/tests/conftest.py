@@ -23,10 +23,19 @@ if str(API_ROOT) not in sys.path:
 def client():
     from fastapi.testclient import TestClient
 
-    from app.main import app
+    from app.main import _AUTH_FAILURES, app
 
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def reset_auth_rate_limit():
+    from app.main import _AUTH_FAILURES
+
+    _AUTH_FAILURES.clear()
+    yield
+    _AUTH_FAILURES.clear()
 
 
 @pytest.fixture

@@ -33,6 +33,11 @@ _AUTH_PUBLIC_PATHS = {
     "/api/v1/health/ready",
     "/api/v1/auth/status",
 }
+_AUTH_FAILURE_LIMIT = 5
+_AUTH_FAILURE_WINDOW_SECONDS = 60.0
+_AUTH_FAILURE_BAN_SECONDS = 300.0
+_AUTH_FAILURES: dict[str, tuple[int, float, float]] = {}
+
 _SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
@@ -59,6 +64,40 @@ def _configure_access_logging() -> None:
     access.addHandler(handler)
     access.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
     access.propagate = False
+
+
+def _auth_client_key(request: Request) -> str:
+    """Group auth failures by direct peer; never trust forwarded IP headers."""
+    client = request.scope.get("client")
+    return str(client[0]) if client else "unknown"
+
+
+def _auth_rate_limited(client_key: str) -> bool:
+    now = time.monotonic()
+    failures, window_start, blocked_until = _AUTH_FAILURES.get(client_key, (0, now, 0.0))
+    if blocked_until > now:
+        return True
+    if now - window_start >= _AUTH_FAILURE_WINDOW_SECONDS:
+        _AUTH_FAILURES[client_key] = (0, now, 0.0)
+        return False
+    return False
+
+
+def _record_auth_failure(client_key: str) -> None:
+    now = time.monotonic()
+    failures, window_start, blocked_until = _AUTH_FAILURES.get(client_key, (0, now, 0.0))
+    if now - window_start >= _AUTH_FAILURE_WINDOW_SECONDS:
+        failures, window_start = 0, now
+    failures += 1
+    blocked_until = now + _AUTH_FAILURE_BAN_SECONDS if failures >= _AUTH_FAILURE_LIMIT else 0.0
+    _AUTH_FAILURES[client_key] = (failures, window_start, blocked_until)
+    if len(_AUTH_FAILURES) > 4096:
+        # Bound memory use on the single-worker deployment if many peers fail auth.
+        for key, (_, _, blocked) in list(_AUTH_FAILURES.items()):
+            if blocked <= now:
+                _AUTH_FAILURES.pop(key, None)
+                if len(_AUTH_FAILURES) <= 2048:
+                    break
 
 
 def _request_id_for(request: Request) -> str:
@@ -134,12 +173,34 @@ class OperatorAuthMiddleware(BaseHTTPMiddleware):
         # may interpret attacker-controlled Host characters as path separators.
         path = request.scope.get("path", "").rstrip("/") or "/"
         if (
-            (not token and not settings.auth_required)
-            or request.method == "OPTIONS"
+            request.method == "OPTIONS"
             or not path.startswith("/api/v1")
             or path in _AUTH_PUBLIC_PATHS
+            or (not token and not settings.auth_required)
         ):
             return await call_next(request)
+        if not token:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": "API authentication is required but no API_TOKEN is configured.",
+                    "code": "authentication_not_configured",
+                    "request_id": getattr(request.state, "request_id", None),
+                },
+                headers={"Cache-Control": "no-store"},
+            )
+        client_key = _auth_client_key(request)
+        if _auth_rate_limited(client_key):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "Too many failed authentication attempts; try again later.",
+                    "code": "rate_limited",
+                    "request_id": None,
+                },
+                headers={"Retry-After": str(int(_AUTH_FAILURE_BAN_SECONDS)) , "Cache-Control": "no-store"},
+            )
+
         authorization = request.headers.get("authorization", "").strip()
         supplied = ""
         if authorization.lower().startswith("bearer "):
@@ -148,15 +209,23 @@ class OperatorAuthMiddleware(BaseHTTPMiddleware):
             supplied = request.headers.get("x-api-key", "").strip()
 
         if token and supplied and secrets.compare_digest(supplied, token):
+            _AUTH_FAILURES.pop(client_key, None)
             return await call_next(request)
 
-        _auth_logger.warning("Rejected invalid operator token for %s %s", request.method, path)
+        _record_auth_failure(client_key)
+        auth_request_id = uuid.uuid4().hex[:12]
+        _auth_logger.warning(
+            "Rejected invalid operator token for %s %s [auth-%s]",
+            request.method,
+            path,
+            auth_request_id,
+        )
         return JSONResponse(
             status_code=401,
             content={
                 "detail": "Missing or invalid operator token",
                 "code": "unauthorized",
-                "request_id": getattr(request.state, "request_id", None),
+                "request_id": auth_request_id,
             },
             headers={
                 "WWW-Authenticate": "Bearer",
@@ -193,6 +262,7 @@ def create_app() -> FastAPI:
     _configure_access_logging()
     _configure_auth_rate_limit()
     docs_enabled = settings.docs_enabled
+    docs_enabled = settings.docs_enabled and not settings.auth_required
     application = FastAPI(
         title="Pre-Mortem Dispatch API",
         version=settings.app_version,
@@ -252,7 +322,7 @@ def create_app() -> FastAPI:
             "message": "Pre-Mortem Dispatch API",
             "version": settings.app_version,
             "docs": "/docs" if docs_enabled else None,
-            "operator_token_required": bool(settings.api_token.strip()),
+            "operator_token_required": bool(settings.api_token.strip() or settings.auth_required),
         }
 
     return application
