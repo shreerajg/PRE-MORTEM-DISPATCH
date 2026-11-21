@@ -393,6 +393,7 @@ export default function Dashboard() {
                 {latest ? (
                   <Link
                     to="/compare"
+                    onClick={() => setScenarioId(latest.id)}
                     className="inline-flex shrink-0 items-center gap-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-slate-400 transition-colors hover:text-slate-900"
                   >
                     Compare <ArrowUpRight className="h-3 w-3" />

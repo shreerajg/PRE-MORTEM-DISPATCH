@@ -532,6 +532,7 @@ export default function DisruptionLab() {
               Re-solve the disruption configured above across several {sweepConfig.label.toLowerCase()} values. Every
               point is computed; nothing is stored.
               {sweepIsDelay ? ' Delays preserve volume, so the curve tracks units that miss their deadlines.' : ''}
+              {events.length ? ' Queued events are not swept — a sweep tests exactly one disruption configuration.' : ''}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -539,9 +540,10 @@ export default function DisruptionLab() {
               <Button
                 variant="outline"
                 onClick={() => sweepMut.mutate()}
-                disabled={!baselineId || Boolean(configError) || sweepMut.isPending}
+                disabled={!baselineId || Boolean(configError) || sweepMut.isPending || events.length > 0}
+                title={events.length ? 'Clear queued events to sweep a single disruption' : undefined}
               >
-                {sweepMut.isPending ? 'Solving points…' : 'Run sensitivity sweep'}
+                {sweepMut.isPending ? 'Solving points…' : events.length ? 'Sweep a single disruption' : 'Run sensitivity sweep'}
               </Button>
               <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-slate-400">
                 {sweepConfig.values.map((value) => `${value}${sweepConfig.unit}`).join(' · ')}

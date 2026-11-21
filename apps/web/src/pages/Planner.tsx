@@ -255,7 +255,7 @@ export default function Planner() {
         </CardContent>
       </Card>
 
-      {baselines.length > 1 ? (
+      {baselines.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-3">
