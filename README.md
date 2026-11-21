@@ -268,10 +268,9 @@ apps/
     app/
       core/        config, error envelope
       domain/      schemas.py — single source of truth (Pydantic)
-      routers/     health, auth, activity, analytics, datasets, plans,
-                   scenarios, forecast
+      routers/     health, auth, activity, analytics, datasets, plans, scenarios
       services/    allocation, disruption, recovery, resilience, advisory, kpi,
-                   normalize, validation, reporting, audit, ml/{interface,baseline}
+                   normalize, validation, reporting, audit
       repo/        SQLite repository
     tests/
   web/
@@ -408,10 +407,9 @@ Deployment details, backup commands and the incident checklist live in
 ## What this is not
 
 - **Not** a claim of real-world optimality. It is a transparent model of a distribution network.
-- **Not** forecasting. `GET /forecast` returns a labelled moving-average baseline (`model:
-  "baseline"`). With no matching demand history it returns an empty series and
-  `reason: "insufficient_history"` rather than inventing one. No trained model, no accuracy
-  claim, and the allocator never consumes it silently.
+- **Not** forecasting. The product has no time-series history, so no forecast endpoint is
+  offered; treating uploaded dataset snapshots as chronologically-ordered periods would
+  fabricate a trend that is not real.
 - **Not** multi-user. `API_TOKEN` is a shared deployment gate, not accounts, roles or audit
   trails; real identity remains a separate Firebase workstream.
 - **Not** LLM-dependent. An LLM may narrate computed results later; it is never the source of

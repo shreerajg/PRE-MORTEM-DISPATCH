@@ -18,7 +18,7 @@ Every response carries `X-Request-ID` (caller-supplied values are preserved) and
 | 409 | Plan still referenced by a scenario; delete the scenario first |
 | 413 | Upload exceeded the per-file size limit |
 | 422 | FastAPI request-shape validation failure |
-| 429 | Edge rate limit exceeded (nginx, when deployed through Compose) |
+| 429 | Too many failed authentication attempts (app-level) or edge rate limit (nginx, when deployed through Compose) |
 | 500 | Unexpected error — no stack trace is returned to the client |
 | 503 | Database unreachable on `/health/ready` |
 
