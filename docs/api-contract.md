@@ -527,22 +527,4 @@ UI-friendly alias for readiness. Always `200`; the body reports the truth.
 (`db_error` carries a short reason). `solver_available` reports whether OR-Tools can
 actually be imported, independent of which solver is configured.
 
-### `GET /forecast?destination_id=&product_id=&horizon=`
-Baseline moving-average forecast (window 3) with widened p10/p90 band, computed only
-from demand rows that match the requested destination×product. **Labeled
-`model: "baseline"`** — this is not a trained model and no accuracy is claimed.
-Allocation never consumes it implicitly.
 
-With history (oldest → newest):
-```json
-{ "destination_id": "DST-01", "product_id": "PRD-A", "horizon": 4, "model": "baseline",
-  "forecast": [ { "period": 1, "mean": 300.0, "p10": 240.0, "p90": 360.0 } ],
-  "history_used": [ { "quantity": 300.0 } ],
-  "fallback": false, "reason": null }
-```
-
-With no matching history the endpoint does **not** fabricate a series:
-```json
-{ "destination_id": "DST-X", "product_id": "PRD-X", "horizon": 4, "model": "baseline",
-  "forecast": [], "history_used": [], "fallback": true, "reason": "insufficient_history" }
-```

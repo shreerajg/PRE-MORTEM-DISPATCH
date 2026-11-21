@@ -155,7 +155,6 @@ class AllocationInput(BaseModel):
         default=False,
         description="Hard constraint: a lane may only be used when its transit time meets the destination deadline",
     )
-    allow_partial: bool = Field(default=True, description="Whether partial fulfillment is allowed")
     penalty_unmet: float = Field(default=1000.0, ge=0, description="Penalty cost per unit of unmet demand")
 
 
@@ -255,30 +254,3 @@ class ScenarioRename(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=80, description="New scenario name")
 
-
-# ---------------------------------------------------------------------------
-# Plan & comparison responses
-# ---------------------------------------------------------------------------
-
-class PlanResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = Field(..., description="Plan identifier")
-    dataset_id: str = Field(..., description="Dataset this plan belongs to")
-    type: str = Field(..., description="Plan type: baseline | disrupted | recovered")
-    status: str = Field(..., description="Plan status, e.g. completed, pending, failed")
-    solver: str = Field(..., description="Solver used for this plan")
-    created_at: str = Field(..., description="ISO-8601 creation timestamp")
-    allocations: List[Any] = Field(default_factory=list, description="Allocation items (AllocationItem dicts)")
-    unmet: List[Any] = Field(default_factory=list, description="Unmet demand items (UnmetDemand dicts)")
-    kpis: KPISnapshot = Field(..., description="KPI snapshot for this plan")
-
-
-class CompareResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    baseline: Dict[str, Any] = Field(..., description="Baseline plan summary / KPIs")
-    disrupted: Dict[str, Any] = Field(..., description="Disrupted plan summary / KPIs")
-    recovered: Optional[Dict[str, Any]] = Field(default=None, description="Recovered plan summary / KPIs if available")
-    deltas: Dict[str, Any] = Field(default_factory=dict, description="Delta metrics between plans")
-    tradeoff_narrative: str = Field(..., description="Human-readable tradeoff narrative")

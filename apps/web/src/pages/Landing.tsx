@@ -449,7 +449,6 @@ const METER_TONE = {
 const LIMITS = [
   'Greedy is feasible, not proven optimal. Every plan states its solver.',
   'A route delay raises deadline exposure; it does not delete capacity.',
-  'Forecasting is a labelled moving average — no invented accuracy.',
   'No auth, no roles. Single-operator demo by design.',
 ];
 
@@ -465,7 +464,6 @@ const MARQUEE = [
   'residual demand, stated',
   'export == screen',
   'no API key required',
-  'runs offline',
 ];
 
 /* ------------------------------------------------------------------ */

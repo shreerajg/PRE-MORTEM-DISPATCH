@@ -372,17 +372,6 @@ export type CompareResponse = {
   tradeoff_narrative: string;
 };
 
-export type ForecastResponse = {
-  destination_id: string;
-  product_id: string;
-  horizon: number;
-  model: string;
-  forecast: { period: number; quantity: number }[] | number[] | Record<string, unknown>[];
-  history_used: Record<string, unknown>[];
-  fallback?: boolean;
-  reason?: string | null;
-};
-
 export type ResilienceComponent = {
   key: string;
   label: string;
@@ -851,15 +840,4 @@ export async function getScenarioBrief(scenarioId: string): Promise<ScenarioBrie
   return request<ScenarioBriefResponse>(`/api/v1/scenarios/${scenarioId}/brief`, {}, ADVISORY_TIMEOUT_MS);
 }
 
-export async function forecast(params: {
-  destination_id: string;
-  product_id: string;
-  horizon?: number;
-}): Promise<ForecastResponse> {
-  const q = new URLSearchParams({
-    destination_id: params.destination_id,
-    product_id: params.product_id,
-    horizon: String(params.horizon ?? 4),
-  });
-  return request<ForecastResponse>(`/api/v1/forecast?${q.toString()}`);
-}
+

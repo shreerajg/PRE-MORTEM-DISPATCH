@@ -1,4 +1,4 @@
-"""Contract-level regressions: honest solver status, forecasts, validation and errors."""
+"""Contract-level regressions: honest solver status, validation and errors."""
 
 from __future__ import annotations
 
@@ -69,59 +69,11 @@ def test_not_found_and_validation_errors_use_envelope(client):
     assert missing.status_code == 404
     assert missing.json()["code"] == "not_found"
 
-    invalid = client.get("/api/v1/forecast", params={"destination_id": "DST-01"})
+    invalid = client.post("/api/v1/plans", json={})
     assert invalid.status_code == 422
     body = invalid.json()
     assert body["code"] == "validation_error"
     assert body["errors"]
-
-
-def test_forecast_reports_insufficient_history_instead_of_inventing_it(client):
-    res = client.get(
-        "/api/v1/forecast",
-        params={"destination_id": "DST-NO-HISTORY", "product_id": "PRD-NO-HISTORY"},
-    )
-    assert res.status_code == 200
-    body = res.json()
-    assert body["fallback"] is True
-    assert body["reason"] == "insufficient_history"
-    assert body["forecast"] == []
-    assert body["history_used"] == []
-
-
-def test_forecast_uses_history_in_chronological_order():
-    from app.repo import database as db
-
-    pairs = [("baseline-hist", "2026-01-01T00:00:01+00:00", 10.0), ("middle-hist", "2026-01-01T00:00:02+00:00", 20.0), ("recent-hist", "2026-01-01T00:00:03+00:00", 30.0), ("latest-hist", "2026-01-01T00:00:04+00:00", 100.0)]
-    for dataset_id, created_at, qty in pairs:
-        db.save_dataset(
-            dataset_id,
-            name=dataset_id,
-            created_at=created_at,
-            meta={
-                "warehouses": [],
-                "destinations": [],
-                "products": [],
-                "routes": [],
-                "inventory": [],
-                "demand": [{"destination_id": "DST-HIST", "product_id": "PRD-HIST", "quantity": qty}],
-            },
-        )
-
-    # Import after the DB is initialised by the client fixture.
-    from fastapi.testclient import TestClient
-
-    from app.main import app
-
-    with TestClient(app) as client:
-        body = client.get(
-            "/api/v1/forecast", params={"destination_id": "DST-HIST", "product_id": "PRD-HIST", "horizon": 1}
-        ).json()
-
-    assert body["fallback"] is False
-    assert [row["quantity"] for row in body["history_used"]] == [10.0, 20.0, 30.0, 100.0]
-    # Moving average over the three most recent periods: (20 + 30 + 100) / 3
-    assert body["forecast"][0]["mean"] == pytest.approx(50.0, abs=1e-6)
 
 
 def test_scenario_requires_baseline_plan_type(client, baseline):

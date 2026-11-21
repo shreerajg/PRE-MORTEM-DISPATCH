@@ -302,7 +302,6 @@ def create_app() -> FastAPI:
     from app.routers.analytics import router as analytics_router
     from app.routers.auth import router as auth_router
     from app.routers.datasets import router as datasets_router
-    from app.routers.forecast import router as forecast_router
     from app.routers.health import router as health_router
     from app.routers.plans import router as plans_router
     from app.routers.scenarios import router as scenarios_router
@@ -314,7 +313,6 @@ def create_app() -> FastAPI:
     application.include_router(datasets_router)
     application.include_router(plans_router)
     application.include_router(scenarios_router)
-    application.include_router(forecast_router)
 
     @application.get("/", tags=["meta"])
     def root():

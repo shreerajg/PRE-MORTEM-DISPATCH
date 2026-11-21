@@ -57,7 +57,6 @@ the whole history.
 | `services/normalize.py` | CSV row → typed domain object | Silently drop rows |
 | `services/validation.py` | CSV parsing + schema/referential checks | Persist anything |
 | `services/reporting.py` | CSV export bytes | Recompute metrics |
-| `services/ml/*` | Forecast interface + baseline fallback | Bypass feasibility |
 | `repo/database.py` | Persistence | Contain business rules |
 | `core/*` | Config, errors | Domain logic |
 
@@ -188,4 +187,4 @@ are optional, and deleting a scenario deletes its own plans but never the baseli
 | Postgres | SQLite behind `repo/` is enough; swap is a config change |
 | Microservices / queues | Adds failure modes, no benefit at this scale |
 | LLM as source of truth | All figures are computed; an LLM may only narrate them |
-| Trained forecasting model | No historical dataset exists — baseline MA only, clearly labelled |
+| Forecasting | No time-series history exists; treating uploaded snapshots as periods would fabricate a trend |
