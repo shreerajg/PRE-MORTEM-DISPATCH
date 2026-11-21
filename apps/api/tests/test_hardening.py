@@ -194,6 +194,27 @@ def test_non_finite_numbers_are_rejected_not_propagated():
     assert "finite" in messages
 
 
+def test_duplicate_composite_keys_are_rejected():
+    report = validate_dataset(
+        warehouses=[{"id": "WH-1", "name": "Hub", "region": "North"}],
+        destinations=[{"id": "D-1", "name": "Clinic", "priority": 1, "region": "North"}],
+        products=[{"id": "P-1", "name": "Sensor", "unit": "units"}],
+        routes=[],
+        inventory=[
+            {"warehouse_id": "WH-1", "product_id": "P-1", "quantity": 10},
+            {"warehouse_id": "WH-1", "product_id": "P-1", "quantity": 5},
+        ],
+        demand=[
+            {"destination_id": "D-1", "product_id": "P-1", "quantity": 7},
+            {"destination_id": "D-1", "product_id": "P-1", "quantity": 2},
+        ],
+    )
+    assert report.valid is False
+    messages = " ".join(issue.message for issue in report.issues)
+    assert "duplicate warehouse_id/product_id" in messages
+    assert "duplicate destination_id/product_id" in messages
+
+
 def _tie_input(route_order: list[str]) -> AllocationInput:
     routes = {
         "RT-B": Route(

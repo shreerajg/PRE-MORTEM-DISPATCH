@@ -256,6 +256,27 @@ def validate_dataset(
             except Exception:
                 add_issue(f"Demand row {idx}: invalid quantity '{q}'", severity="error", field="quantity", row=idx)
 
+    # Duplicate composite keys are data-entry errors that `build_network` would
+    # silently sum into a single row. Flag them so the operator can correct the CSV
+    # before the numbers become a plan.
+    def _duplicate_composite(rows, parts, entity):
+        seen = {}
+        for idx, row in enumerate(rows):
+            if not all(not _is_missing(row.get(p)) for p in parts):
+                continue
+            key = tuple(str(row.get(p)).strip() for p in parts)
+            prior = seen.setdefault(key, idx)
+            if prior != idx:
+                add_issue(
+                    f"{entity} row {idx}: duplicate {'/'.join(parts)} {'/'.join(key)} already on row {prior}",
+                    severity="error",
+                    field=parts[0],
+                    row=idx,
+                )
+
+    _duplicate_composite(inventory, ("warehouse_id", "product_id"), "Inventory")
+    _duplicate_composite(demand, ("destination_id", "product_id"), "Demand")
+
     errors = sum(1 for i in issues if i.severity == "error")
     warnings = sum(1 for i in issues if i.severity == "warning")
     valid = errors == 0
