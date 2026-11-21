@@ -35,9 +35,11 @@ import {
   listScenarios,
   recoverScenario,
   renameScenario,
+  type DisruptionRequest,
   type KPISnapshot,
   type RecoveryAction,
   type ScenarioSummary,
+  type StoredDisruption,
   type UnmetDemand,
   type UnmetDiagnosis,
 } from '../lib/api';
@@ -77,6 +79,26 @@ const MITIGATION_META: Record<string, { icon: React.ElementType; label: string }
 const advisoryPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
 const advisoryUnits = (value: number) => Math.round(value).toLocaleString();
 const advisoryCost = (value: number) => `${value >= 0 ? '+' : '−'}$${Math.abs(Math.round(value)).toLocaleString()}`;
+
+/** Flatten a stored scenario disruption (single or compound) into its events. */
+function disruptionEvents(disruption?: StoredDisruption | null): DisruptionRequest[] {
+  if (!disruption) return [];
+  if ('events' in disruption) return disruption.events;
+  return [disruption];
+}
+
+const PARAM_LABELS: Record<string, string> = {
+  warehouse_id: 'Warehouse',
+  product_id: 'Product',
+  route_id: 'Route',
+  reduction_pct: 'Reduction',
+  extra_days: 'Extra transit days',
+};
+
+const PARAM_UNITS: Record<string, string> = {
+  reduction_pct: '%',
+  extra_days: 'd',
+};
 
 export default function Recovery() {
   const qc = useQueryClient();
@@ -305,6 +327,27 @@ export default function Recovery() {
                 {active.recovered_plan_id ? (
                   <Badge variant="success">Recovered {active.recovered_plan_id.slice(0, 8)}</Badge>
                 ) : null}
+              </div>
+              <div className="mt-3 border-t border-slate-900/[0.06] pt-3">
+                <div className="font-medium text-slate-700">Scenario configuration</div>
+                <div className="mt-2 space-y-1.5">
+                  {disruptionEvents(active.disruption).map((event, i) => (
+                    <div key={i} className="rounded-lg bg-white/70 p-2.5 text-[11px] leading-relaxed text-slate-600">
+                      <span className="font-medium capitalize text-slate-800">{event.type.replace(/_/g, ' ')}</span>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                        {Object.entries(event.params).map(([key, value]) => (
+                          <span key={key}>
+                            <span className="text-slate-400">{PARAM_LABELS[key] ?? key}:</span>{' '}
+                            <span className="font-mono">
+                              {String(value)}
+                              {PARAM_UNITS[key] ?? ''}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ) : null}
