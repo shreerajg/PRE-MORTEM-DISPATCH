@@ -112,8 +112,18 @@ class KPISnapshot(BaseModel):
     fulfillment_rate: float = Field(..., ge=0, le=1, description="fulfilled / total_demand (0-1)")
     unmet: float = Field(..., ge=0, description="Total unmet quantity")
     total_cost: float = Field(..., ge=0, description="Total allocation cost")
-    wh_utilization: float = Field(..., ge=0, le=1, description="Warehouse capacity utilization 0-1")
-    route_utilization: float = Field(..., ge=0, le=1, description="Route capacity utilization 0-1")
+    wh_utilization: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Inventory consumed / inventory at warehouses with at least one eligible lane (0-1)",
+    )
+    route_utilization: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Capacity used / capacity of eligible lanes (0-1)",
+    )
     unmet_critical_destinations: int = Field(
         ...,
         ge=0,

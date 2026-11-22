@@ -227,10 +227,23 @@ def _try_ortools(
         # available, and contingency lanes only when recovery activated them.
         total_inventory = sum(float(v) for v in inv_map.values())
         used_inventory = total_demand - total_unmet  # simplified
-        wh_util = (used_inventory / total_inventory) if total_inventory > 0 else 0.0
         eligible_routes = [
             r for r in route_list if r.available and (allow_backup or not r.backup)
         ]
+        # Warehouse utilization measures the stock this plan could actually ship:
+        # only warehouses with at least one eligible lane count toward the denominator,
+        # so it is comparable with route utilization (which uses eligible lanes).
+        reachable_warehouses = {r.warehouse_id for r in eligible_routes}
+        total_reachable_inventory = sum(
+            float(qty)
+            for (wh, _product), qty in inv_map.items()
+            if wh in reachable_warehouses
+        )
+        wh_util = (
+            (used_inventory / total_reachable_inventory)
+            if total_reachable_inventory > 0
+            else 0.0
+        )
         total_route_cap = sum(float(r.capacity) for r in eligible_routes)
         used_route_cap = sum(route_used.values())
         route_util = (used_route_cap / total_route_cap) if total_route_cap > 0 else 0.0
@@ -248,6 +261,7 @@ def _try_ortools(
                 "route_utilization": round(route_util, 6),
                 "used_inventory": round(used_inventory, 4),
                 "total_inventory": round(total_inventory, 4),
+                "total_reachable_inventory": round(total_reachable_inventory, 4),
                 "used_route_capacity": round(used_route_cap, 4),
                 "total_route_capacity": round(total_route_cap, 4),
             },
@@ -387,8 +401,20 @@ def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str
     fulfilled = max(0.0, total_demand - total_unmet)
     fulfillment_rate = (fulfilled / total_demand) if total_demand > 0 else 1.0
 
+    # Warehouse utilization uses the stock this plan could actually ship — only
+    # warehouses with at least one eligible lane count toward the denominator, so it
+    # is comparable with route utilization (which uses eligible lanes).
+    eligible_greedy = [r for r in routes if r.available and (allow_backup or not r.backup)]
+    reachable_greedy_wh = {r.warehouse_id for r in eligible_greedy}
+    total_reachable_inventory = sum(
+        qty for (wh, _product), qty in inv_total.items() if wh in reachable_greedy_wh
+    )
     used_inventory = total_inventory - sum(inv_remaining.values())
-    wh_util = (used_inventory / total_inventory) if total_inventory > 0 else 0.0
+    wh_util = (
+        (used_inventory / total_reachable_inventory)
+        if total_reachable_inventory > 0
+        else 0.0
+    )
     used_route_cap = total_route_cap - sum(route_remaining.values())
     route_util = (used_route_cap / total_route_cap) if total_route_cap > 0 else 0.0
 
@@ -407,6 +433,7 @@ def _greedy_solve(input_data: AllocationInput, priority_map: Dict[Tuple[str, str
             "route_utilization": round(route_util, 6),
             "used_inventory": round(used_inventory, 4),
             "total_inventory": round(total_inventory, 4),
+            "total_reachable_inventory": round(total_reachable_inventory, 4),
             "used_route_capacity": round(used_route_cap, 4),
             "total_route_capacity": round(total_route_cap, 4),
         },

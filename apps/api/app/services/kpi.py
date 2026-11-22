@@ -88,8 +88,8 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
       fulfilled = total_demand - unmet sum
       fulfillment_rate
       total_cost
-      wh_utilization (from allocation_result.utilization if available)
-      route_utilization (from allocation_result.utilization if available)
+      wh_utilization (used reachable inventory / reachable inventory)
+      route_utilization (used eligible lane capacity / eligible lane capacity)
       unmet_critical_destinations count where unmet>0 and priority<=2
       risk_score 0-100 = weighted (unmet_rate*50 + route_util*20 + at_risk*15 + cost_per_unit_factor*15)
       risk_breakdown dict
