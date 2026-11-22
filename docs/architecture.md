@@ -47,6 +47,8 @@ the whole history.
 |---|---|---|
 | `routers/*` | HTTP shape, status codes, request validation | Business rules, solver logic |
 | `services/allocation.py` | Greedy + optional OR-Tools allocation | Touch HTTP, format responses |
+| `services/plan_service.py` | Baseline plan solve, KPI/diagnosis orchestration, persistence | Touch HTTP |
+| `services/scenario_service.py` | Scenario create/recover orchestration, disruption replay, persistence | Touch HTTP |
 | `services/disruption.py` | Mutating planning inputs on copies | Mutate the caller's objects |
 | `services/diagnosis.py` | Explain every unmet row from the inputs + result | Change feasibility or invent causes |
 | `services/recovery.py` | Recovery re-plan and allocation diff | Claim success when infeasible |
