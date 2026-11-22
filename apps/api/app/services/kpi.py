@@ -90,7 +90,7 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
       total_cost
       wh_utilization (from allocation_result.utilization if available)
       route_utilization (from allocation_result.utilization if available)
-      at_risk_destinations count where unmet>0 and priority<=2
+      unmet_critical_destinations count where unmet>0 and priority<=2
       risk_score 0-100 = weighted (unmet_rate*50 + route_util*20 + at_risk*15 + cost_per_unit_factor*15)
       risk_breakdown dict
     """
@@ -152,8 +152,10 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
                 except Exception:
                     pass
 
-    # at_risk_destinations: count where unmet>0 and priority<=2 (1 highest urgency)
-    at_risk_set = set()
+    # unmet_critical_destinations: count where unmet>0 and priority<=2 (1 highest urgency).
+    # This is distinct from delivery_risk.at_risk_destinations, which lists destinations
+    # with shipments that miss their deadline.
+    unmet_critical_set = set()
     for u in unmet_list:
         if isinstance(u, dict):
             qty = float(u.get("quantity", 0) or 0)
@@ -169,8 +171,8 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
             pri = 3
         if qty > 1e-9 and pri <= 2:
             if dst:
-                at_risk_set.add(str(dst))
-    at_risk_destinations = len(at_risk_set)
+                unmet_critical_set.add(str(dst))
+    unmet_critical_destinations = len(unmet_critical_set)
 
     # Risk score 0-100
     # documented weights: unmet_rate*50 + route_util*20 + at_risk*15 + cost_per_unit_factor*15
@@ -190,10 +192,10 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
                 dest_ids.add(str(getattr(d, "destination_id", "")))
         total_dest = len([x for x in dest_ids if x])
     if total_dest > 0:
-        at_risk_factor = min(at_risk_destinations / max(total_dest, 1), 1.0)
+        unmet_critical_factor = min(unmet_critical_destinations / max(total_dest, 1), 1.0)
     else:
-        at_risk_factor = 0.0
-    at_risk_component = at_risk_factor * 15
+        unmet_critical_factor = 0.0
+    unmet_critical_component = unmet_critical_factor * 15
 
     # cost_per_unit_factor: total_cost / (fulfilled or 1) normalized. Assume high cost = >100 per unit is high risk
     # normalized as min(cost_per_unit /100, 1) *15
@@ -203,7 +205,7 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
 
     unmet_component = unmet_rate * 50
 
-    risk_score = unmet_component + route_util_component + at_risk_component + cost_component
+    risk_score = unmet_component + route_util_component + unmet_critical_component + cost_component
     risk_score = max(0.0, min(100.0, risk_score))
 
     risk_breakdown: Dict[str, Any] = {
@@ -211,15 +213,15 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
         "unmet_component": round(unmet_component, 2),
         "route_utilization": round(route_utilization, 4),
         "route_component": round(route_util_component, 2),
-        "at_risk_destinations": at_risk_destinations,
-        "at_risk_factor": round(at_risk_factor, 4),
-        "at_risk_component": round(at_risk_component, 2),
+        "unmet_critical_destinations": unmet_critical_destinations,
+        "unmet_critical_factor": round(unmet_critical_factor, 4),
+        "unmet_critical_component": round(unmet_critical_component, 2),
         "cost_per_unit": round(cost_per_unit, 4),
         "cost_factor_norm": round(cost_factor_norm, 4),
         "cost_component": round(cost_component, 2),
         "total_risk_score": round(risk_score, 2),
-        "weights": {"unmet_rate": 50, "route_util": 20, "at_risk": 15, "cost_per_unit": 15},
-        "description": "risk_score = unmet_rate*50 + route_utilization*20 + (at_risk_dest/total_dest)*15 + min(cost_per_unit/100,1)*15, capped 0-100",
+        "weights": {"unmet_rate": 50, "route_util": 20, "unmet_critical": 15, "cost_per_unit": 15},
+        "description": "risk_score = unmet_rate*50 + route_utilization*20 + (unmet_critical_dest/total_dest)*15 + min(cost_per_unit/100,1)*15, capped 0-100",
     }
 
     return KPISnapshot(
@@ -231,7 +233,7 @@ def compute_kpis(allocation_result, inventory, demand, routes) -> KPISnapshot:
         total_cost=round(total_cost, 4),
         wh_utilization=round(wh_utilization, 6),
         route_utilization=round(route_utilization, 6),
-        at_risk_destinations=at_risk_destinations,
+        unmet_critical_destinations=unmet_critical_destinations,
         risk_score=round(risk_score, 2),
         risk_breakdown=risk_breakdown,
     )

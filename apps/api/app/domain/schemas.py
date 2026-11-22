@@ -114,7 +114,11 @@ class KPISnapshot(BaseModel):
     total_cost: float = Field(..., ge=0, description="Total allocation cost")
     wh_utilization: float = Field(..., ge=0, le=1, description="Warehouse capacity utilization 0-1")
     route_utilization: float = Field(..., ge=0, le=1, description="Route capacity utilization 0-1")
-    at_risk_destinations: int = Field(..., ge=0, description="Number of destinations at risk")
+    unmet_critical_destinations: int = Field(
+        ...,
+        ge=0,
+        description="Number of destinations with unmet demand that have priority <= 2 (critical)",
+    )
     risk_score: float = Field(..., ge=0, description="Aggregate risk score")
     risk_breakdown: Dict[str, Any] = Field(default_factory=dict, description="Breakdown of risk by category")
 

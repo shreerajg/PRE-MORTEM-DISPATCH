@@ -709,7 +709,7 @@ export default function DisruptionLab() {
             <Stat
               label="Risk score"
               value={disrupted.kpis.risk_score.toFixed(1)}
-              sub={`${disrupted.kpis.at_risk_destinations} at-risk destination(s)`}
+              sub={`${disrupted.kpis.unmet_critical_destinations} unmet critical destination(s)`}
               tone={disrupted.kpis.risk_score >= 40 ? 'danger' : disrupted.kpis.risk_score >= 20 ? 'warning' : 'success'}
               bar={disrupted.kpis.risk_score / 100}
             />

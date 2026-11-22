@@ -171,7 +171,7 @@ export type KPISnapshot = {
   total_cost: number;
   wh_utilization: number;
   route_utilization: number;
-  at_risk_destinations: number;
+  unmet_critical_destinations: number;
   risk_score: number;
   risk_breakdown: Record<string, unknown>;
 };

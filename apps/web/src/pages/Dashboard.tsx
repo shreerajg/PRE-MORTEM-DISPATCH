@@ -372,7 +372,7 @@ export default function Dashboard() {
             <Stat
               label="Risk score"
               value={kpis!.risk_score.toFixed(1)}
-              sub={`${kpis!.at_risk_destinations} at-risk dest.`}
+              sub={`${kpis!.unmet_critical_destinations} unmet critical dest.`}
               icon={Gauge}
               tone={kpis!.risk_score >= 40 ? 'danger' : kpis!.risk_score >= 20 ? 'warning' : 'success'}
               bar={kpis!.risk_score / 100}
